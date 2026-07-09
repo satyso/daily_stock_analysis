@@ -80,6 +80,8 @@ class Config:
     
     # 飞书 Webhook
     feishu_webhook_url: Optional[str] = None
+    # Feishu/Lark webhook signature secret (optional; required when bot enables sign verification)
+    feishu_webhook_secret: Optional[str] = None
     
     # Telegram 配置（需要同时配置 Bot Token 和 Chat ID）
     telegram_bot_token: Optional[str] = None  # Bot Token（@BotFather 获取）
@@ -355,6 +357,7 @@ class Config:
             serpapi_keys=serpapi_keys,
             wechat_webhook_url=os.getenv('WECHAT_WEBHOOK_URL'),
             feishu_webhook_url=os.getenv('FEISHU_WEBHOOK_URL'),
+            feishu_webhook_secret=os.getenv('FEISHU_WEBHOOK_SECRET'),
             telegram_bot_token=os.getenv('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=os.getenv('TELEGRAM_CHAT_ID'),
             telegram_message_thread_id=os.getenv('TELEGRAM_MESSAGE_THREAD_ID'),
