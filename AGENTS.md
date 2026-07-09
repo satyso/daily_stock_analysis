@@ -119,3 +119,24 @@
 python -m py_compile main.py src/*.py data_provider/*.py
 flake8 main.py src/ --max-line-length=120
 ```
+
+## Cursor Cloud specific instructions
+
+Environment layout (dependencies are pre-installed by the startup update script):
+
+- Python deps live in a virtualenv at `.venv/` (Ubuntu system Python is PEP 668 "externally managed", so a venv is required). Activate it before running anything: `source .venv/bin/activate`. Dev tools `flake8`/`pytest`/`black`/`isort` are installed there too.
+- Frontend deps are installed under `apps/dsa-web/node_modules` (Node 22 / npm 10).
+- Config comes from `.env` (git-ignored, copied from `.env.example`). It exists in this environment already.
+
+Services (all one product; see README for full command list):
+
+- CLI analysis engine — `python main.py ...` (e.g. `./test.sh quick`, `python main.py --stocks 600519 --dry-run --no-notify`). Fetches real market data via a multi-source fallback chain (efinance/akshare/tushare/yfinance/tencent); network egress to these providers is required and works here.
+- Web UI + API — `python main.py --webui-only` (equivalently `python webui.py`) serves FastAPI + the React SPA on `http://127.0.0.1:8000`; health at `/api/health`, docs at `/docs`.
+
+Non-obvious caveats:
+
+- The React SPA must be built before FastAPI can serve it: `cd apps/dsa-web && npm run build` outputs to the repo-root `static/` dir (git-ignored). Rebuild after frontend changes; the backend does not bundle the UI.
+- Without `GEMINI_API_KEY`/`OPENAI_API_KEY`, analysis still runs end-to-end (real quotes + data + report skeleton stored in history) but the AI summary and strategy points are placeholder text ("AI 分析功能未启用"). Set a key in `.env` for real AI output.
+- `.env.example` ships non-empty placeholder search keys (`TAVILY_API_KEYS`/`SERPAPI_API_KEYS`/`BRAVE_API_KEYS`) that the app treats as "configured" and then retries slowly against; leave them empty unless you have real keys. `GEMINI_REQUEST_DELAY` also adds a per-stock sleep — set it to `0` for fast local runs.
+- Lint mirrors CI with `flake8 . --select=E9,F63,F7,F82`; tests run with `pytest tests/`. Frontend `npm run lint` currently reports 3 pre-existing errors unrelated to setup (build still succeeds).
+- SQLite DB, logs and reports are auto-created under `data/`, `logs/`, `reports/` (all git-ignored); no external DB/broker to start.
