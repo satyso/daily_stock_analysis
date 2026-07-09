@@ -70,6 +70,7 @@ daily_stock_analysis/
 |------------|------|:----:|
 | `WECHAT_WEBHOOK_URL` | 企业微信 Webhook URL | 可选 |
 | `FEISHU_WEBHOOK_URL` | 飞书 Webhook URL | 可选 |
+| `FEISHU_WEBHOOK_SECRET` | 飞书/Lark Webhook 签名密钥（开启签名校验时必填） | 可选 |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token（@BotFather 获取） | 可选 |
 | `TELEGRAM_CHAT_ID` | Telegram Chat ID | 可选 |
 | `TELEGRAM_MESSAGE_THREAD_ID` | Telegram Topic ID (用于发送到子话题) | 可选 |
@@ -158,6 +159,7 @@ daily_stock_analysis/
 |--------|------|:----:|
 | `WECHAT_WEBHOOK_URL` | 企业微信机器人 Webhook URL | 可选 |
 | `FEISHU_WEBHOOK_URL` | 飞书机器人 Webhook URL | 可选 |
+| `FEISHU_WEBHOOK_SECRET` | 飞书/Lark Webhook 签名密钥（开启签名校验时必填） | 可选 |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token | 可选 |
 | `TELEGRAM_CHAT_ID` | Telegram Chat ID | 可选 |
 | `TELEGRAM_MESSAGE_THREAD_ID` | Telegram Topic ID | 可选 |
@@ -398,6 +400,7 @@ crontab -e
 1. 在飞书群聊中添加"自定义机器人"
 2. 复制 Webhook URL
 3. 设置 `FEISHU_WEBHOOK_URL`
+4. 若开启了「签名校验」，再复制签名密钥并设置 `FEISHU_WEBHOOK_SECRET`（飞书国际版 Lark 同样适用）
 
 ### Telegram
 

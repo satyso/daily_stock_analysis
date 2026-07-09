@@ -14,12 +14,14 @@ A股自选股智能分析系统 - 通知层
    - 邮件 SMTP
    - Pushover（手机/桌面推送）
 """
+import base64
 import hashlib
 import hmac
 import logging
 import json
 import smtplib
 import re
+import time
 import markdown2
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -142,6 +144,7 @@ class NotificationService:
         # 各渠道的 Webhook URL
         self._wechat_url = config.wechat_webhook_url
         self._feishu_url = getattr(config, 'feishu_webhook_url', None)
+        self._feishu_webhook_secret = getattr(config, 'feishu_webhook_secret', None)
 
         # 微信消息类型配置
         self._wechat_msg_type = getattr(config, 'wechat_msg_type', 'markdown')
@@ -1713,15 +1716,40 @@ class NotificationService:
         
         return success_count == total_chunks
     
+    @staticmethod
+    def _generate_feishu_webhook_sign(timestamp: str, secret: str) -> str:
+        """
+        Generate Feishu/Lark webhook signature.
+
+        Algorithm (official):
+        string_to_sign = f"{timestamp}\\n{secret}"
+        sign = Base64(HMAC-SHA256(key=string_to_sign, message=""))
+        """
+        string_to_sign = f"{timestamp}\n{secret}".encode("utf-8")
+        hmac_code = hmac.new(string_to_sign, digestmod=hashlib.sha256).digest()
+        return base64.b64encode(hmac_code).decode("utf-8")
+
+    def _attach_feishu_webhook_sign(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Attach timestamp/sign when FEISHU_WEBHOOK_SECRET is configured."""
+        secret = (self._feishu_webhook_secret or "").strip()
+        if not secret:
+            return payload
+        timestamp = str(int(time.time()))
+        signed = dict(payload)
+        signed["timestamp"] = timestamp
+        signed["sign"] = self._generate_feishu_webhook_sign(timestamp, secret)
+        return signed
+
     def _send_feishu_message(self, content: str) -> bool:
         """发送单条飞书消息（优先使用 Markdown 卡片）"""
         def _post_payload(payload: Dict[str, Any]) -> bool:
+            signed_payload = self._attach_feishu_webhook_sign(payload)
             logger.debug(f"飞书请求 URL: {self._feishu_url}")
             logger.debug(f"飞书请求 payload 长度: {len(content)} 字符")
 
             response = requests.post(
                 self._feishu_url,
-                json=payload,
+                json=signed_payload,
                 timeout=30
             )
 

@@ -5,6 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+- 🔐 飞书/Lark Webhook 签名校验支持（`FEISHU_WEBHOOK_SECRET`）
+
 ## [3.0.5] - 2026-02-08
 
 ### 修复
