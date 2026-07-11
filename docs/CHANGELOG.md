@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [改进] 焦点卡标题改为「特别关注 · 宋总预测」；Top5 拆成涨/跌两组；卡片展示去掉「准确率/准确度」字样，仅保留可信度。
 - [改进] 焦点卡扩为特别关注∪美股主题∪港股专项全量覆盖，增加行业观点/行业关键股，以及逐票准确率与可信度（高/中/低）。
 - [改进] 焦点卡增加近端方向准确率（总览 + 逐票）；推送简报在结果含准确率字段时同步展示。
 - [改进] 推送/焦点卡改为股票名称 + 明日涨跌幅百分比（不再展示代码与信息源行）；新增 `scripts/setup_intelligence_defaults.py` 一键启用金十等资讯源，以及 `scripts/render_focus_card.py` 生成卡片图片。

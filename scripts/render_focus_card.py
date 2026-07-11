@@ -277,21 +277,38 @@ def build_industry_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return industries
 
 
+def _top_up_down(
+    rows: List[Dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    valid = [r for r in rows if "pred_pct" in r]
+    ups = sorted(
+        [r for r in valid if float(r["pred_pct"]) > 0],
+        key=lambda r: float(r["pred_pct"]),
+        reverse=True,
+    )[:limit]
+    downs = sorted(
+        [r for r in valid if float(r["pred_pct"]) < 0],
+        key=lambda r: float(r["pred_pct"]),
+    )[:limit]
+    return ups, downs
+
+
 def format_card_markdown(
     rows: List[Dict[str, Any]],
     industries: List[Dict[str, Any]],
     *,
     title_date: str,
 ) -> str:
-    overall = _overall_accuracy(rows)
     lines = [
-        "# 特别关注 · 全量行业预测",
-        f"{title_date} · 覆盖 {len(rows)} 只 · 近端方向准确率 {overall['acc_label']}",
+        "# 特别关注 · 宋总预测",
+        f"{title_date} · 覆盖 {len(rows)} 只",
         "",
         "## 行业观点（含关键股）",
         "",
-        "| 行业 | 明日观点 | 关键股 | 关键股预期 | 行业准确率 |",
-        "|---|---:|---|---:|---:|",
+        "| 行业 | 明日观点 | 关键股 | 关键股预期 | 可信度 |",
+        "|---|---:|---|---:|---|",
     ]
     for ind in industries:
         pred = ind.get("pred_pct")
@@ -303,46 +320,49 @@ def format_card_markdown(
             kp = ind.get("key_pred")
             key_pred_s = f"{kp:+.2f}%" if kp is not None else "—"
         lines.append(
-            f"| {ind['industry']} | {pred_s} | {ind['key_name']} | {key_pred_s} | {ind['acc_label']} |"
+            f"| {ind['industry']} | {pred_s} | {ind['key_name']} | {key_pred_s} | "
+            f"{ind.get('key_confidence', '—')} |"
         )
 
     lines += [
         "",
-        "## 全部标的（逐票准确率 / 可信度）",
+        "## 全部标的",
         "",
-        "| 股票 | 行业 | 明日预期 | 准确率 | 可信度 |",
-        "|---|---|---:|---:|---|",
+        "| 股票 | 行业 | 明日预期 | 可信度 |",
+        "|---|---|---:|---|",
     ]
     for row in rows:
         name = row["name"]
         industry = row.get("industry", "—")
         if row.get("error"):
-            lines.append(f"| {name} | {industry} | 暂无 | — | 不足 |")
+            lines.append(f"| {name} | {industry} | 暂无 | 不足 |")
             continue
         pred = row["pred_pct"]
         sign = "+" if pred > 0 else ""
         lines.append(
-            f"| {name} | {industry} | {sign}{pred:.2f}% | "
-            f"{row.get('acc_label', '—')} | {row.get('confidence', '—')} |"
+            f"| {name} | {industry} | {sign}{pred:.2f}% | {row.get('confidence', '—')} |"
         )
 
-    lines += ["", "## Top 5（明日弹性）"]
-    scored = sorted(
-        [r for r in rows if "pred_pct" in r],
-        key=lambda r: abs(float(r["pred_pct"])),
-        reverse=True,
-    )[:5]
-    for i, row in enumerate(scored, 1):
+    ups, downs = _top_up_down(rows, limit=5)
+    lines += ["", "## Top5 涨"]
+    if not ups:
+        lines.append("（暂无）")
+    for i, row in enumerate(ups, 1):
         pred = row["pred_pct"]
-        sign = "+" if pred > 0 else ""
         lines.append(
-            f"{i}. **{row['name']}**  {sign}{pred:.2f}% · "
-            f"准确率 {row.get('acc_label', '—')} · 可信度{row.get('confidence', '—')}"
+            f"{i}. **{row['name']}**  +{pred:.2f}% · 可信度{row.get('confidence', '—')}"
+        )
+    lines += ["", "## Top5 跌"]
+    if not downs:
+        lines.append("（暂无）")
+    for i, row in enumerate(downs, 1):
+        pred = row["pred_pct"]
+        lines.append(
+            f"{i}. **{row['name']}**  {pred:.2f}% · 可信度{row.get('confidence', '—')}"
         )
     lines += [
         "",
-        "说明：明日%=近端收益收缩估计；准确率=同法近12个交易日方向命中；"
-        "可信度：≥60%高 / ≥45%中 / <45%低。仅供参考，不构成投资建议。",
+        "说明：明日%=近端收益收缩估计；可信度：高/中/低。仅供参考，不构成投资建议。",
     ]
     return "\n".join(lines) + "\n"
 
@@ -388,8 +408,7 @@ def render_png_with_pillow(
         font_title = font_sub = font_section = font_row = font_small = ImageFont.load_default()
 
     width = 900
-    overall = _overall_accuracy(rows)
-    top5 = sorted([r for r in rows if "pred_pct" in r], key=lambda r: abs(float(r["pred_pct"])), reverse=True)[:5]
+    ups, downs = _top_up_down(rows, limit=5)
     height = (
         150
         + 36
@@ -398,7 +417,9 @@ def render_png_with_pillow(
         + 36
         + len(rows) * 28
         + 50
-        + len(top5) * 28
+        + max(1, len(ups)) * 26
+        + 40
+        + max(1, len(downs)) * 26
         + 90
     )
     img = Image.new("RGB", (width, height), (15, 23, 42))
@@ -411,10 +432,10 @@ def render_png_with_pillow(
         width=2,
     )
 
-    draw.text((40, 36), "特别关注 · 全量行业预测", font=font_title, fill=(248, 250, 252))
+    draw.text((40, 36), "特别关注 · 宋总预测", font=font_title, fill=(248, 250, 252))
     draw.text(
         (40, 78),
-        f"{title_date} · 覆盖 {len(rows)} 只 · 近端方向准确率 {overall['acc_label']}",
+        f"{title_date} · 覆盖 {len(rows)} 只",
         font=font_sub,
         fill=(148, 163, 184),
     )
@@ -426,7 +447,7 @@ def render_png_with_pillow(
     draw.text((250, y), "明日观点", font=font_small, fill=(148, 163, 184))
     draw.text((370, y), "关键股", font=font_small, fill=(148, 163, 184))
     draw.text((540, y), "关键股预期", font=font_small, fill=(148, 163, 184))
-    draw.text((680, y), "行业准确率", font=font_small, fill=(148, 163, 184))
+    draw.text((700, y), "可信度", font=font_small, fill=(148, 163, 184))
     y += 22
     draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
     y += 8
@@ -444,53 +465,66 @@ def render_png_with_pillow(
             draw.text((540, y), "—", font=font_row, fill=(148, 163, 184))
         else:
             draw.text((540, y), f"{float(kp):+.2f}%", font=font_row, fill=_pct_color(float(kp)))
-        draw.text((680, y), str(ind.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+        conf = str(ind.get("key_confidence") or "—")
+        draw.text((700, y), conf, font=font_row, fill=_conf_color(conf))
         y += 28
 
     y += 14
-    draw.text((40, y), "二、全部标的（准确率 / 我怎么看这只的可信度）", font=font_section, fill=(226, 232, 240))
+    draw.text((40, y), "二、全部标的", font=font_section, fill=(226, 232, 240))
     y += 30
     draw.text((40, y), "股票", font=font_small, fill=(148, 163, 184))
-    draw.text((200, y), "行业", font=font_small, fill=(148, 163, 184))
-    draw.text((400, y), "明日预期", font=font_small, fill=(148, 163, 184))
-    draw.text((520, y), "准确率", font=font_small, fill=(148, 163, 184))
-    draw.text((680, y), "可信度", font=font_small, fill=(148, 163, 184))
+    draw.text((220, y), "行业", font=font_small, fill=(148, 163, 184))
+    draw.text((460, y), "明日预期", font=font_small, fill=(148, 163, 184))
+    draw.text((640, y), "可信度", font=font_small, fill=(148, 163, 184))
     y += 22
     draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
     y += 8
 
     for row in rows:
         draw.text((40, y), row["name"][:10], font=font_row, fill=(248, 250, 252))
-        draw.text((200, y), str(row.get("industry") or "—")[:12], font=font_row, fill=(148, 163, 184))
+        draw.text((220, y), str(row.get("industry") or "—")[:12], font=font_row, fill=(148, 163, 184))
         if row.get("error"):
-            draw.text((400, y), "暂无", font=font_row, fill=(148, 163, 184))
-            draw.text((520, y), "—", font=font_row, fill=(148, 163, 184))
-            draw.text((680, y), "不足", font=font_row, fill=(148, 163, 184))
+            draw.text((460, y), "暂无", font=font_row, fill=(148, 163, 184))
+            draw.text((640, y), "不足", font=font_row, fill=(148, 163, 184))
         else:
             pred = float(row["pred_pct"])
             sign = "+" if pred > 0 else ""
-            draw.text((400, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-            draw.text((520, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+            draw.text((460, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
             conf = str(row.get("confidence") or "—")
-            draw.text((680, y), conf, font=font_row, fill=_conf_color(conf))
+            draw.text((640, y), conf, font=font_row, fill=_conf_color(conf))
         y += 26
 
     y += 12
-    draw.text((40, y), "三、Top 5（明日弹性）", font=font_section, fill=(226, 232, 240))
+    draw.text((40, y), "三、Top5 涨", font=font_section, fill=(52, 211, 153))
     y += 28
-    for i, row in enumerate(top5, 1):
+    if not ups:
+        draw.text((40, y), "（暂无）", font=font_row, fill=(148, 163, 184))
+        y += 26
+    for i, row in enumerate(ups, 1):
         pred = float(row["pred_pct"])
-        sign = "+" if pred > 0 else ""
         conf = str(row.get("confidence") or "—")
         draw.text((40, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
-        draw.text((280, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-        draw.text((400, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
-        draw.text((560, y), f"可信度{conf}", font=font_row, fill=_conf_color(conf))
+        draw.text((280, y), f"+{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+        draw.text((420, y), f"可信度{conf}", font=font_row, fill=_conf_color(conf))
+        y += 26
+
+    y += 10
+    draw.text((40, y), "四、Top5 跌", font=font_section, fill=(251, 113, 133))
+    y += 28
+    if not downs:
+        draw.text((40, y), "（暂无）", font=font_row, fill=(148, 163, 184))
+        y += 26
+    for i, row in enumerate(downs, 1):
+        pred = float(row["pred_pct"])
+        conf = str(row.get("confidence") or "—")
+        draw.text((40, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
+        draw.text((280, y), f"{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+        draw.text((420, y), f"可信度{conf}", font=font_row, fill=_conf_color(conf))
         y += 26
 
     draw.text(
         (40, height - 58),
-        "准确率=近12日方向命中；可信度≥60%高 / ≥45%中 / <45%低。启发式估计，仅供参考。",
+        "明日%=近端收益收缩估计；可信度高/中/低。仅供参考，不构成投资建议。",
         font=font_small,
         fill=(100, 116, 139),
     )

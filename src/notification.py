@@ -1747,16 +1747,16 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # Focus card: stock names only, tomorrow expected % move, accuracy, no codes/sources.
+        # Focus card: stock names only, tomorrow expected % move, confidence, no codes/sources.
         is_en = str(report_language).lower().startswith("en")
         horizon_label = "Tomorrow" if is_en else "明日"
         view_label = "View" if is_en else "观点"
-        acc_label = "Accuracy" if is_en else "准确率"
-        overall_acc = self._format_overall_accuracy(results, report_language)
+        conf_label = "Confidence" if is_en else "可信度"
+        overall_conf = self._format_overall_confidence(results, report_language)
         lines = [
             f"# {report_date} {labels['brief_title']}",
             f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}"
-            + (f" · {acc_label} {overall_acc}" if overall_acc else ""),
+            + (f" · {conf_label} {overall_conf}" if overall_conf else ""),
             "",
         ]
         self._append_market_status_line(lines, results, report_language)
@@ -1768,10 +1768,10 @@ class NotificationService(
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
             pred_pct = self._format_tomorrow_pct(r, report_language)
-            stock_acc = self._format_stock_accuracy(r, report_language)
+            stock_conf = self._format_stock_confidence(r, report_language)
             lines.append(f"{emoji} **{name}**")
-            acc_part = f" · {acc_label}: {stock_acc}" if stock_acc else ""
-            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}{acc_part}")
+            conf_part = f" · {conf_label}: {stock_conf}" if stock_conf else ""
+            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}{conf_part}")
             if one:
                 lines.append(f"  {view_label}: {one}")
             lines.append("")
@@ -1837,11 +1837,34 @@ class NotificationService(
             return ""
         return f"{value:.0f}%"
 
+    def _confidence_from_accuracy_pct(self, value: Optional[float], report_language: str) -> str:
+        if value is None:
+            return ""
+        is_en = str(report_language).lower().startswith("en")
+        if value >= 60:
+            return "High" if is_en else "高"
+        if value >= 45:
+            return "Mid" if is_en else "中"
+        return "Low" if is_en else "低"
+
+    def _format_stock_confidence(self, result: AnalysisResult, report_language: str) -> str:
+        return self._confidence_from_accuracy_pct(
+            self._extract_accuracy_pct(result),
+            report_language,
+        )
+
     def _format_overall_accuracy(self, results: List[AnalysisResult], report_language: str) -> str:
         values = [v for v in (self._extract_accuracy_pct(r) for r in results) if v is not None]
         if not values:
             return ""
         return f"{(sum(values) / len(values)):.0f}%"
+
+    def _format_overall_confidence(self, results: List[AnalysisResult], report_language: str) -> str:
+        values = [v for v in (self._extract_accuracy_pct(r) for r in results) if v is not None]
+        if not values:
+            return ""
+        avg = sum(values) / len(values)
+        return self._confidence_from_accuracy_pct(avg, report_language)
 
     def _format_focus_sources(self, result: AnalysisResult) -> str:
         """Compact information-source line for focus/brief cards."""
