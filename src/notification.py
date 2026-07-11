@@ -1747,10 +1747,8 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # SMART focus card: Specific / Measurable / Actionable / Relevant / Time-bound.
-        # Do not truncate/overwrite the one-sentence view; keep a full readable line.
-        src_label = "源" if not str(report_language).lower().startswith("en") else "Src"
-        horizon_label = "周期" if not str(report_language).lower().startswith("en") else "Horizon"
+        # Focus card: stock names only, tomorrow expected % move, no codes/sources.
+        horizon_label = "明日" if not str(report_language).lower().startswith("en") else "Tomorrow"
         view_label = "观点" if not str(report_language).lower().startswith("en") else "View"
         lines = [
             f"# {report_date} {labels['brief_title']}",
@@ -1764,29 +1762,44 @@ class NotificationService(
             dash = r.dashboard or {}
             core = dash.get('core_conclusion', {}) or {}
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
-            trend = localize_trend_prediction(getattr(r, "trend_prediction", None), report_language) or "—"
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
-            horizon = "1w" if str(report_language).lower().startswith("en") else "1周"
-            lines.append(f"{emoji} **{name}** `{r.code}`")
-            lines.append(
-                f"  {labels['advice_label']}: {advice} · "
-                f"{labels['trend_label']}: {trend} · "
-                f"{labels['score_label']}: {r.sentiment_score} · "
-                f"{horizon_label}: {horizon}"
-            )
+            pred_pct = self._format_tomorrow_pct(r, report_language)
+            lines.append(f"{emoji} **{name}**")
+            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}")
             if one:
                 lines.append(f"  {view_label}: {one}")
-            sources = self._format_focus_sources(r)
-            if sources:
-                lines.append(f"  {src_label}: {sources}")
             lines.append("")
-        models = self._collect_models_used(results)
         footer = datetime.now().strftime('%Y-%m-%d %H:%M')
-        if models:
-            lines.append(f"*{footer} · {labels['analysis_model_label']}: {', '.join(models)}*")
-        else:
-            lines.append(f"*{footer}*")
+        lines.append(f"*{footer}*")
         return "\n".join(lines)
+
+    def _format_tomorrow_pct(self, result: AnalysisResult, report_language: str) -> str:
+        """Format tomorrow expected % move; prefer explicit fields over direction words."""
+        for key in ("predicted_change_pct", "tomorrow_pct", "expected_return_pct"):
+            raw = getattr(result, key, None)
+            if raw is None and isinstance(getattr(result, "dashboard", None), dict):
+                raw = (result.dashboard or {}).get(key)
+            try:
+                if raw is not None and str(raw).strip() != "":
+                    value = float(raw)
+                    sign = "+" if value > 0 else ""
+                    return f"{sign}{value:.2f}%"
+            except (TypeError, ValueError):
+                continue
+        # Fallback: map coarse trend text to a conservative numeric band label
+        trend = str(getattr(result, "trend_prediction", "") or "")
+        mapping = [
+            (("强烈看多", "strong bull"), "+2.50%"),
+            (("看多", "偏多", "bull"), "+1.20%"),
+            (("强烈看空", "strong bear"), "-2.50%"),
+            (("看空", "偏空", "bear"), "-1.20%"),
+            (("震荡", "中性", "neutral", "flat"), "0.00%"),
+        ]
+        lower = trend.lower()
+        for keys, label in mapping:
+            if any(k.lower() in lower or k in trend for k in keys):
+                return label
+        return "0.00%"
 
     def _format_focus_sources(self, result: AnalysisResult) -> str:
         """Compact information-source line for focus/brief cards."""

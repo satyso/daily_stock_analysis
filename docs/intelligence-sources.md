@@ -80,6 +80,12 @@ NEWSNOW_BASE_URL=https://newsnow.busiyi.world
 NEWS_INTEL_AUTO_FETCH_ENABLED=true
 ```
 
+也可手动一键启用内置源（含金十数据）：
+
+```bash
+python scripts/setup_intelligence_defaults.py --fetch
+```
+
 该开关代表用户明确同意运行时访问已配置的外部 RSS/Atom/NewsNow HTTP 源；默认关闭是为了避免未确认的外部请求、公开 NewsNow 示例实例压力和分析 prompt 输入变化。
 
 > 说明：该开关只有在实际执行进程环境变量中可见时才会生效。仓库默认随带的 `00-daily-analysis.yml` 为 `env` 采用 allowlist 映射策略，未显式列入映射时，即便在仓库 Variables/Secrets 中设置同名变量也不会注入运行环境，因此默认 workflow 中不会自动接收该开关。若要在仓库自带每日分析任务里开启该能力，请在 workflow 中显式添加该变量透传，或改为本地/Docker 直接配置环境变量运行。

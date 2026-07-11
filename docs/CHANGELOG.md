@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [改进] 推送/焦点卡改为股票名称 + 明日涨跌幅百分比（不再展示代码与信息源行）；新增 `scripts/setup_intelligence_defaults.py` 一键启用金十等资讯源，以及 `scripts/render_focus_card.py` 生成卡片图片。
 - [改进] 精简推送卡改为 SMART 字段（建议/趋势/评分/周期/观点/信息源），观点原文不再截断覆盖。
 - [改进] 日更默认改为截图「特别关注」预设 `special_attention`（11 只），并保留 Mag7/港股主题名单；`daily` 闭环与可选 Actions 默认跟此名单。
 - [改进] 美股/港股 focus 名单收敛为 Mag7 + CPU/存储/光/航天龙头与港股互联网+创新；`daily` 闭环支持准确率复算、Auto Research、趋势推送；`REPORT_TYPE=simple/brief` 推送改为含信息源的精简卡片。
