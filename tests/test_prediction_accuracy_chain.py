@@ -181,3 +181,38 @@ def test_paper_check_uses_history_and_forward_bars(isolated_db):
     assert result["soft_fit_n"] == 1
     assert result["soft_fit_hits"] == 1
     assert result["rows"][0]["soft_ok"] is True
+
+
+def test_daily_orchestrates_recalc_predict_paper(isolated_db):
+    chain = PredictionAccuracyChain(db_manager=isolated_db)
+    chain.recalc = MagicMock(return_value={"mode": "recalc", "totals": {"evaluated": 1}, "stats": {"hit_rate_pct": 50}})
+    chain.predict = MagicMock(
+        return_value={"mode": "predict", "success_count": 2, "failed_count": 0, "analysis_items": []}
+    )
+    chain.paper_check = MagicMock(
+        return_value={"mode": "paper_check", "soft_fit_hits": 1, "soft_fit_n": 1, "soft_fit_pct": 100.0}
+    )
+
+    result = chain.daily(watchlist="us_ai_focus", research=True, notify=False)
+    assert result["mode"] == "daily"
+    assert result["watchlist"] == "us_ai_focus"
+    assert "NVDA" in result["stocks"]
+    chain.recalc.assert_called_once()
+    chain.predict.assert_called_once()
+    assert chain.predict.call_args.kwargs["research"] is True
+    assert chain.predict.call_args.kwargs["notify"] is False
+    chain.paper_check.assert_called_once()
+
+
+def test_daily_defaults_to_us_and_hk_union(isolated_db):
+    chain = PredictionAccuracyChain(db_manager=isolated_db)
+    chain.recalc = MagicMock(return_value={"mode": "recalc", "totals": {}, "stats": {}})
+    chain.predict = MagicMock(return_value={"mode": "predict", "success_count": 0, "failed_count": 0})
+    chain.paper_check = MagicMock(return_value={"mode": "paper_check", "soft_fit_hits": 0, "soft_fit_n": 0})
+
+    result = chain.daily(skip_recalc=True, skip_paper=True, notify=False, research=False)
+    assert result["watchlist"] == "us_ai_focus,hk_ai_focus"
+    assert "AAPL" in result["stocks"]
+    assert "hk00700" in result["stocks"]
+    chain.recalc.assert_not_called()
+    chain.paper_check.assert_not_called()

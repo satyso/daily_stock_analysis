@@ -211,10 +211,13 @@ class PredictionAccuracyChain:
                     )
                 )
 
+        from src.enums import ReportType
         from src.services.analyzer_service import analyze_stock
         from src.notification import NotificationService
 
         notifier = NotificationService(self.config) if notify else None
+        # Focus daily push: SIMPLE/BRIEF → concise card with trend + sources
+        report_type = ReportType.FULL if full_report else ReportType.SIMPLE
         analysis_items: List[Dict[str, Any]] = []
         for code in codes:
             try:
@@ -223,6 +226,7 @@ class PredictionAccuracyChain:
                     config=self.config,
                     full_report=full_report,
                     notifier=notifier,
+                    report_type=report_type,
                 )
                 if result is None:
                     analysis_items.append({"stock_code": code, "success": False, "error": "empty_result"})
@@ -235,6 +239,8 @@ class PredictionAccuracyChain:
                         "operation_advice": getattr(result, "operation_advice", None),
                         "trend_prediction": getattr(result, "trend_prediction", None),
                         "sentiment_score": getattr(result, "sentiment_score", None),
+                        "data_sources": getattr(result, "data_sources", None),
+                        "search_performed": getattr(result, "search_performed", None),
                         "action": getattr(result, "action", None),
                     }
                 )
@@ -255,6 +261,63 @@ class PredictionAccuracyChain:
                 "DecisionSignals are written by analysis. "
                 "Run recalc after 1/5 trading days to score daily/weekly accuracy."
             ),
+        }
+
+    def daily(
+        self,
+        *,
+        stocks: Optional[str] | Sequence[str] = None,
+        watchlist: Optional[str] = None,
+        research: bool = True,
+        research_question: Optional[str] = None,
+        notify: bool = True,
+        horizons: Optional[str] | Sequence[str] = None,
+        paper_window: str = "daily",
+        skip_recalc: bool = False,
+        skip_paper: bool = False,
+    ) -> Dict[str, Any]:
+        """Daily focus loop: accuracy recalc → Auto Research + predict push → paper check.
+
+        Default watchlist when omitted: ``us_ai_focus,hk_ai_focus``.
+        """
+        effective_watchlist = watchlist
+        if not stocks and not effective_watchlist:
+            effective_watchlist = "us_ai_focus,hk_ai_focus"
+
+        recalc_payload: Optional[Dict[str, Any]] = None
+        if not skip_recalc:
+            recalc_payload = self.recalc(
+                stocks=stocks,
+                watchlist=effective_watchlist,
+                horizons=horizons or "1d,5d",
+            )
+
+        predict_payload = self.predict(
+            stocks=stocks,
+            watchlist=effective_watchlist,
+            research=research,
+            research_question=research_question,
+            full_report=False,
+            notify=notify,
+        )
+
+        paper_payload: Optional[Dict[str, Any]] = None
+        if not skip_paper:
+            paper_payload = self.paper_check(
+                stocks=stocks,
+                watchlist=effective_watchlist,
+                window=paper_window,
+            )
+
+        return {
+            "mode": "daily",
+            "watchlist": effective_watchlist,
+            "stocks": resolve_stock_codes(stocks=stocks, watchlist=effective_watchlist),
+            "research_enabled": bool(research),
+            "notify": bool(notify),
+            "recalc": recalc_payload,
+            "predict": predict_payload,
+            "paper": paper_payload,
         }
 
     def run_auto_research(

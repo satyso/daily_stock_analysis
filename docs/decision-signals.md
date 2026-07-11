@@ -166,32 +166,33 @@ P5 通过 sidecar 表保存用户反馈和后验结果，不扩展 `decision_sig
 日常可复用 `scripts/prediction_accuracy_chain.py`，复用 DecisionSignal outcome，不另建平行准确率表：
 
 ```bash
-# 0) 按市场写入 .env STOCK_LIST（美股 / 港股专项分开；默认不含 A 股）
+# 推荐：每日闭环（默认 us_ai_focus + hk_ai_focus）
+# 1) 复算准确率  2) Auto Research + 趋势预测推送（精简卡片含信息源）  3) 纸面核对
+python scripts/prediction_accuracy_chain.py daily --notify
+
+# 分市场：
+python scripts/prediction_accuracy_chain.py daily --watchlist us_ai_focus --notify
+python scripts/prediction_accuracy_chain.py daily --watchlist hk_ai_focus --notify
+
+# 写入 STOCK_LIST（可选）
 python scripts/apply_watchlist.py --name us_ai_focus
 python scripts/apply_watchlist.py --name hk_ai_focus
-# 或合并：python scripts/apply_watchlist.py --name us_ai_focus,hk_ai_focus
 
-# 1) 预测：可选 Auto Research（Deep ResearchAgent）后写分析与 DecisionSignal
-python scripts/prediction_accuracy_chain.py predict --watchlist us_ai_focus --notify
-python scripts/prediction_accuracy_chain.py predict --watchlist hk_ai_focus --notify
-# 或临时名单：
-python scripts/prediction_accuracy_chain.py predict --stocks NVDA,AVGO,LITE --research
-
-# 2) 重算：显式评估 daily(1d) + weekly(5d)
+# 单步：
+python scripts/prediction_accuracy_chain.py predict --watchlist us_ai_focus --research --notify
 python scripts/prediction_accuracy_chain.py recalc --watchlist us_ai_focus,hk_ai_focus --horizons 1d,5d
-
-# 3) 纸面软核对：对 watch/hold 等非方向动作，用 analysis_history.trend_prediction 对照后续涨跌
-python scripts/prediction_accuracy_chain.py paper --watchlist us_ai_focus --window weekly
-
-# 4) 仅 Auto Research（不写分析）
-python scripts/prediction_accuracy_chain.py research --stocks NVDA --research-question "周末到下周博弈与赔率"
+python scripts/prediction_accuracy_chain.py paper --watchlist us_ai_focus --window daily
 ```
 
-主题预设（可用 `python scripts/apply_watchlist.py --list` 查看）：
+主题预设（`python scripts/apply_watchlist.py --list`）：
 
-- `us_ai_focus`：美股 Mag7 + AI 算力/存储/设备/光通信/数据中心电力与冷却/航天等机构质量标的
-- `hk_ai_focus`：港股专项（互联网 / AI / 半导体龙头；与美股名单分离）
-- `ai_focus`：US ∪ HK 合并兼容预设，**不含 A 股**
+- `us_ai_focus`：美股 Mag7 + CPU/存储/光通信/航天各板块龙头（默认 12 只）
+- `hk_ai_focus`：港股互联网 + 创新（默认 6 只）
+- `ai_focus`：US ∪ HK 合并，不含 A 股
+
+推送卡片：`REPORT_TYPE=simple` / `brief` 使用精简 focus 格式（趋势 + 评分 + 一句话 + 信息源），避免长文。
+
+GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按工作日定时跑 `daily`，也可手动 `workflow_dispatch`。
 
 约定：`daily`/`1d` = 次日验证；`weekly`/`5d` = 约一周（5 个交易日）。新信号默认 horizon 仍多为 `3d`；`recalc --horizons 1d,5d` 会按请求 horizon 评估，不要求信号自身 horizon 等于 1d/5d。
 

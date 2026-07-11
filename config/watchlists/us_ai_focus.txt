@@ -1,30 +1,18 @@
-# US AI / smart-tech focus (institutional quality)
-# Used by: scripts/apply_watchlist.py --name us_ai_focus
-#          scripts/prediction_accuracy_chain.py --watchlist us_ai_focus
-# Market: US only. No A-shares. No HK.
-# Curation: Mag7 + AI compute / memory / equipment / optical / datacenter / power / space.
-# Avoid meme, leveraged single-name, and gambling names in the default card.
+# US focus: Mag7 + module tops (CPU / memory / optical / space)
+# Only US. No A-shares. No HK.
+# Daily: scripts/prediction_accuracy_chain.py daily --watchlist us_ai_focus
 
-# --- Mag7 (platform + AI demand anchors) ---
+# Mag7
 AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
 
-# --- AI compute / CPU / foundry ---
-AMD, AVGO, TSM, ARM, MRVL
+# CPU
+AMD, AVGO
 
-# --- Memory ---
+# Memory
 MU
 
-# --- Semi equipment (AI capex) ---
-ASML, AMAT, LRCX, KLAC
+# Optical (light)
+LITE
 
-# --- Optical / networking (legacy + AI interconnect) ---
-LITE, COHR, CIEN, ANET
-
-# --- Datacenter OEM / cooling / power chain ---
-SMCI, DELL, VRT, GEV, CEG
-
-# --- Enterprise AI software / security ---
-ORCL, CRWD
-
-# --- Space (asymmetric AI-adjacent) ---
-RKLB, ASTS
+# Space
+RKLB

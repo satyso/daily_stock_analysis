@@ -168,7 +168,7 @@ class TestPipelineWechatOnlyImageRouting(unittest.TestCase):
             pipeline._send_notifications(results, ReportType.SIMPLE)
 
         mock_md2img.assert_called_once_with(
-            "dashboard-report", max_chars=pipeline.notifier._markdown_to_image_max_chars
+            "brief-report", max_chars=pipeline.notifier._markdown_to_image_max_chars
         )
         pipeline.notifier._send_wechat_image.assert_called_once()
         pipeline.notifier.send_to_wechat.assert_not_called()
@@ -185,7 +185,7 @@ class TestPipelineWechatOnlyImageRouting(unittest.TestCase):
             pipeline._send_notifications(results, ReportType.SIMPLE)
 
         pipeline.notifier._send_wechat_image.assert_not_called()
-        pipeline.notifier.send_to_wechat.assert_called_once_with("dashboard-report")
+        pipeline.notifier.send_to_wechat.assert_called_once_with("brief-report")
         self.assertTrue(
             any("企业微信 Markdown 转图片失败" in str(call.args[0]) for call in mock_warning.call_args_list)
         )

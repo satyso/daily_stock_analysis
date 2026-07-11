@@ -1,21 +1,8 @@
-# Combined smart-tech focus = US ∪ HK (no A-shares)
-# Prefer market-separated presets for daily work:
-#   us_ai_focus  — US Mag7 / AI compute / optical / datacenter / power / space
-#   hk_ai_focus  — 港股专项 (internet / AI / semi leaders)
-# This file remains for backward-compatible --watchlist ai_focus / apply default.
-# Used by: scripts/apply_watchlist.py, scripts/prediction_accuracy_chain.py --watchlist
+# Combined = US ∪ HK (no A-shares). Prefer us_ai_focus / hk_ai_focus separately.
 
-# --- US (see us_ai_focus.txt) ---
+# US Mag7 + CPU/memory/optical/space tops
 AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
-AMD, AVGO, TSM, ARM, MRVL
-MU
-ASML, AMAT, LRCX, KLAC
-LITE, COHR, CIEN, ANET
-SMCI, DELL, VRT, GEV, CEG
-ORCL, CRWD
-RKLB, ASTS
+AMD, AVGO, MU, LITE, RKLB
 
-# --- HK special (see hk_ai_focus.txt) ---
-hk00700, hk09988, hk03690, hk01810, hk09618, hk09999
-hk09888, hk00020, hk06682, hk03888
-hk00981
+# HK internet + innovation
+hk00700, hk09988, hk03690, hk01810, hk09888, hk00020

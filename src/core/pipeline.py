@@ -3064,12 +3064,10 @@ class StockAnalysisPipeline:
                 if report_type == ReportType.FULL:
                     report_content = self.notifier.generate_dashboard_report([result])
                     logger.info(f"[{stock_code}] 使用完整报告格式")
-                elif report_type == ReportType.BRIEF:
-                    report_content = self.notifier.generate_brief_report([result])
-                    logger.info(f"[{stock_code}] 使用简洁报告格式")
                 else:
-                    report_content = self.notifier.generate_single_stock_report(result)
-                    logger.info(f"[{stock_code}] 使用精简报告格式")
+                    # SIMPLE / BRIEF → focus card (trend + sources, minimal prose)
+                    report_content = self.notifier.generate_brief_report([result])
+                    logger.info(f"[{stock_code}] 使用精简 focus 卡片格式")
 
                 sent = self.notifier.send(
                     report_content,
@@ -3307,11 +3305,11 @@ class StockAnalysisPipeline:
                             _get_md2img_hint(),
                         )
 
-                # 企业微信：只发精简版（平台限制）
+                # 企业微信：simple/brief → focus 精简卡；full → 仪表盘
                 wechat_success = False
                 if NotificationChannel.WECHAT in channels:
                     def _send_wechat_report() -> bool:
-                        if report_type == ReportType.BRIEF:
+                        if report_type in (ReportType.BRIEF, ReportType.SIMPLE):
                             dashboard_content = self.notifier.generate_brief_report(results)
                         else:
                             dashboard_content = self.notifier.generate_wechat_dashboard(results)

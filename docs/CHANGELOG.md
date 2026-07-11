@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [改进] 美股/港股 focus 名单收敛为 Mag7 + CPU/存储/光/航天龙头与港股互联网+创新；`daily` 闭环支持准确率复算、Auto Research、趋势推送；`REPORT_TYPE=simple/brief` 推送改为含信息源的精简卡片。
 - [改进] 主题自选拆分为 `us_ai_focus`（美股智能科技链）与 `hk_ai_focus`（港股专项），`ai_focus` 改为 US∪HK 合并且剔除 A 股；`--name`/`--watchlist` 支持逗号联合加载。
 - [新功能] 新增主题自选预设 `config/watchlists/ai_focus.txt`（Mag7 / AI设备 / 存储 / CPU / 光通信 / 航天 / 港股龙头），可用 `scripts/apply_watchlist.py` 写入 `STOCK_LIST`，预测链路支持 `--watchlist`。
 - [新功能] 新增日/周预测准确率链路：`scripts/prediction_accuracy_chain.py` 支持 Auto Research 预测、DecisionSignal `1d/5d` 后验重算与 analysis_history 纸面软核对；`outcomes/stats` 支持按 `stock_code` 过滤。

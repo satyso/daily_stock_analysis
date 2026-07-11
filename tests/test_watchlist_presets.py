@@ -20,7 +20,7 @@ from src.services.watchlist_presets import (
 from src.services.prediction_accuracy_chain import resolve_stock_codes
 
 
-def test_market_separated_presets_exist_and_exclude_a_shares():
+def test_market_separated_presets_are_mag7_module_tops():
     names = list_watchlists()
     assert DEFAULT_WATCHLIST_NAME in names
     assert "us_ai_focus" in names
@@ -30,27 +30,29 @@ def test_market_separated_presets_exist_and_exclude_a_shares():
     hk = load_watchlist_codes("hk_ai_focus")
     combined = load_watchlist_codes("ai_focus")
 
-    # US professional themes
-    for code in ("AAPL", "NVDA", "AMD", "MU", "ASML", "LITE", "ANET", "VRT", "CEG", "ORCL", "RKLB"):
+    # Mag7
+    for code in ("AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA"):
         assert code in us
+    # Module tops only
+    for code in ("AMD", "AVGO", "MU", "LITE", "RKLB"):
+        assert code in us
+    assert len(us) == 12
     assert all(not code.lower().startswith("hk") for code in us)
     assert all(not is_a_share_code(code) for code in us)
-    # speculative / gambling names stay out of the default US card
-    for code in ("DKNG", "ETHW", "GLL", "CONL", "SNDK", "INTC"):
+    for code in ("DKNG", "ETHW", "SMCI", "ORCL", "CEG", "INTC", "SNDK"):
         assert code not in us
 
-    # HK special list only
-    for code in ("hk00700", "hk09988", "hk00981", "hk09888", "hk00020"):
+    # HK internet + innovation
+    for code in ("hk00700", "hk09988", "hk03690", "hk01810", "hk09888", "hk00020"):
         assert code in hk
+    assert len(hk) == 6
     assert all(code.lower().startswith("hk") for code in hk)
-    assert all(not is_a_share_code(code) for code in hk)
 
-    # Combined = US ∪ HK, still no A-shares / KR-looking bare digits
     assert set(us).issubset(set(combined))
     assert set(hk).issubset(set(combined))
+    assert set(combined) == set(us) | set(hk)
     for code in ("688268", "000660"):
         assert code not in combined
-    assert all(not is_a_share_code(code) for code in combined)
 
     meta = describe_watchlists()
     assert meta["us_ai_focus"]["market"] == "us"
