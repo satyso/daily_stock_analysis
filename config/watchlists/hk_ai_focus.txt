@@ -1,0 +1,14 @@
+# HK special focus (港股专项) — AI / internet / semiconductor leaders
+# Used by: scripts/apply_watchlist.py --name hk_ai_focus
+#          scripts/prediction_accuracy_chain.py --watchlist hk_ai_focus
+# Market: Hong Kong only. Separate from US. No A-shares.
+# Note: 港股通标的可在此名单内；与 A 股主体分析隔离，作为独立专项。
+
+# --- Internet / platform leaders ---
+hk00700, hk09988, hk03690, hk01810, hk09618, hk09999
+
+# --- AI / cloud / software ---
+hk09888, hk00020, hk06682, hk03888
+
+# --- Semiconductor ---
+hk00981

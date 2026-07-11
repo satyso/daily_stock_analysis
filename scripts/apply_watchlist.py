@@ -4,7 +4,9 @@
 
 Examples:
   python scripts/apply_watchlist.py --list
-  python scripts/apply_watchlist.py --name ai_focus
+  python scripts/apply_watchlist.py --name us_ai_focus
+  python scripts/apply_watchlist.py --name hk_ai_focus
+  python scripts/apply_watchlist.py --name us_ai_focus,hk_ai_focus
   python scripts/apply_watchlist.py --name ai_focus --dry-run
 """
 
@@ -23,7 +25,11 @@ if str(REPO_ROOT) not in sys.path:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Apply config/watchlists/*.txt to .env STOCK_LIST")
-    parser.add_argument("--name", default="ai_focus", help="Preset name (default: ai_focus)")
+    parser.add_argument(
+        "--name",
+        default="ai_focus",
+        help="Preset name(s): us_ai_focus / hk_ai_focus / ai_focus, or comma-union",
+    )
     parser.add_argument("--list", action="store_true", help="List available presets and exit")
     parser.add_argument("--dry-run", action="store_true", help="Print codes only; do not write .env")
     parser.add_argument("--env-path", default=None, help="Optional .env path (default: repo .env)")
@@ -43,7 +49,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             for name, meta in payload["watchlists"].items():
-                print(f"{name}: {meta['count']} codes ({meta['path']})")
+                market = meta.get("market") or "mixed"
+                print(f"{name} [{market}]: {meta['count']} codes ({meta['path']})")
                 print(f"  {','.join(meta['codes'])}")
         return 0
 

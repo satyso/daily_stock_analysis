@@ -3,18 +3,37 @@
 
 Presets are plain text files: ``#`` comments, codes separated by commas/whitespace.
 They feed ``STOCK_LIST`` (via apply script) and the prediction accuracy chain.
+
+Market-separated presets:
+- ``us_ai_focus`` — US smart-tech / AI chain
+- ``hk_ai_focus`` — 港股专项 (HK leaders)
+- ``ai_focus`` — US ∪ HK combined (no A-shares); kept for backward compatibility
+
+``--watchlist`` / ``--name`` also accept comma-separated preset names to union codes.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 from src.services.stock_list_parser import serialize_stock_list, split_stock_list
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WATCHLIST_DIR = REPO_ROOT / "config" / "watchlists"
 DEFAULT_WATCHLIST_NAME = "ai_focus"
+
+# Display / tooling metadata (not required for file discovery).
+WATCHLIST_MARKETS: Dict[str, str] = {
+    "us_ai_focus": "us",
+    "hk_ai_focus": "hk",
+    "ai_focus": "us+hk",
+}
+
+# Pure 6-digit CN A/B share pattern (exclude from US/HK smart presets).
+_A_SHARE_CODE_RE = re.compile(r"^\d{6}$")
+_HK_PREFIX_RE = re.compile(r"^hk\d{1,5}$", re.IGNORECASE)
 
 
 def watchlist_dir() -> Path:
@@ -26,6 +45,25 @@ def list_watchlists() -> List[str]:
     if not WATCHLIST_DIR.is_dir():
         return []
     return sorted(path.stem for path in WATCHLIST_DIR.glob("*.txt") if path.is_file())
+
+
+def parse_watchlist_names(raw: Optional[str] | Sequence[str]) -> List[str]:
+    """Parse one or more preset names (comma/whitespace separated)."""
+    if raw is None or raw == "" or raw == []:
+        return []
+    if isinstance(raw, str):
+        tokens = [item.strip() for item in re.split(r"[,;\s]+", raw) if item.strip()]
+    else:
+        tokens = []
+        for part in raw:
+            tokens.extend(parse_watchlist_names(str(part)))
+    # drop .txt suffix; preserve order / uniqueness
+    names: List[str] = []
+    for token in tokens:
+        stem = token[:-4] if token.lower().endswith(".txt") else token
+        if stem and stem not in names:
+            names.append(stem)
+    return names
 
 
 def resolve_watchlist_path(name: str) -> Path:
@@ -43,8 +81,7 @@ def resolve_watchlist_path(name: str) -> Path:
     return path
 
 
-def load_watchlist_codes(name: str = DEFAULT_WATCHLIST_NAME) -> List[str]:
-    """Load unique stock codes from a named preset file."""
+def _load_single_watchlist_codes(name: str) -> List[str]:
     path = resolve_watchlist_path(name)
     codes: List[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -58,21 +95,45 @@ def load_watchlist_codes(name: str = DEFAULT_WATCHLIST_NAME) -> List[str]:
     return list(dict.fromkeys(codes))
 
 
+def load_watchlist_codes(name: str = DEFAULT_WATCHLIST_NAME) -> List[str]:
+    """Load unique stock codes from one or more named preset files.
+
+    ``name`` may be a single preset (``us_ai_focus``) or a union
+    (``us_ai_focus,hk_ai_focus``).
+    """
+    names = parse_watchlist_names(name)
+    if not names:
+        raise ValueError("watchlist name is required")
+    codes: List[str] = []
+    for item in names:
+        codes.extend(_load_single_watchlist_codes(item))
+    return list(dict.fromkeys(codes))
+
+
 def watchlist_as_stock_list(name: str = DEFAULT_WATCHLIST_NAME) -> str:
     """Return preset codes in canonical ``STOCK_LIST`` comma-separated form."""
     return serialize_stock_list(",".join(load_watchlist_codes(name)))
 
 
+def is_a_share_code(code: str) -> bool:
+    """Return True for bare 6-digit CN A/B share codes (not HK-prefixed)."""
+    text = str(code or "").strip()
+    if not text or _HK_PREFIX_RE.match(text):
+        return False
+    return bool(_A_SHARE_CODE_RE.match(text))
+
+
 def describe_watchlists() -> Dict[str, Dict[str, object]]:
-    """Return name -> {path, count, codes} for all presets."""
+    """Return name -> {path, count, codes, market} for all presets."""
     result: Dict[str, Dict[str, object]] = {}
     for name in list_watchlists():
-        codes = load_watchlist_codes(name)
+        codes = _load_single_watchlist_codes(name)
         result[name] = {
             "name": name,
             "path": str(resolve_watchlist_path(name).relative_to(REPO_ROOT)),
             "count": len(codes),
             "codes": codes,
+            "market": WATCHLIST_MARKETS.get(name, "mixed"),
         }
     return result
 
@@ -82,7 +143,7 @@ def apply_watchlist_to_env_file(
     *,
     env_path: Optional[Path] = None,
 ) -> Dict[str, object]:
-    """Upsert ``STOCK_LIST`` in a ``.env`` file from the named preset.
+    """Upsert ``STOCK_LIST`` in a ``.env`` file from the named preset(s).
 
     Does not print or log secret values from other keys.
     """

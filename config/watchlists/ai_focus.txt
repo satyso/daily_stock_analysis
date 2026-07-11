@@ -1,30 +1,21 @@
-# Default focus watchlist (AI / semis / optical / space / Mag7 / HK leaders)
+# Combined smart-tech focus = US ∪ HK (no A-shares)
+# Prefer market-separated presets for daily work:
+#   us_ai_focus  — US Mag7 / AI compute / optical / datacenter / power / space
+#   hk_ai_focus  — 港股专项 (internet / AI / semi leaders)
+# This file remains for backward-compatible --watchlist ai_focus / apply default.
 # Used by: scripts/apply_watchlist.py, scripts/prediction_accuracy_chain.py --watchlist
-# Lines starting with # are comments. Codes are comma or whitespace separated.
 
-# --- Mag7 (美股七巨头 / 互联网老牌) ---
+# --- US (see us_ai_focus.txt) ---
 AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
-
-# --- CPU / AI 算力 ---
-AMD, INTC, ARM, TSM, AVGO
-
-# --- Memory 存储 ---
-MU, SNDK, 000660
-
-# --- AI 设备 / 半导体设备 ---
+AMD, AVGO, TSM, ARM, MRVL
+MU
 ASML, AMAT, LRCX, KLAC
-
-# --- 光通信 / 老牌光模块 ---
-LITE, COHR, CIEN
-
-# --- 航天 / Space ---
+LITE, COHR, CIEN, ANET
+SMCI, DELL, VRT, GEV, CEG
+ORCL, CRWD
 RKLB, ASTS
 
-# --- AI 电力 / 数据中心基建 ---
-GEV
-
-# --- 半导体特气 (A股) ---
-688268
-
-# --- 港股龙头 ---
-hk00700, hk09988, hk03690, hk01810, hk00981
+# --- HK special (see hk_ai_focus.txt) ---
+hk00700, hk09988, hk03690, hk01810, hk09618, hk09999
+hk09888, hk00020, hk06682, hk03888
+hk00981

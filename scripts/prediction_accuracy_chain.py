@@ -3,18 +3,20 @@
 """CLI for daily/weekly prediction accuracy chain + optional Auto Research.
 
 Examples:
-  # Use default AI-focus watchlist (Mag7 / semis / optical / space / HK leaders)
-  python scripts/apply_watchlist.py --name ai_focus
-  python scripts/prediction_accuracy_chain.py predict --watchlist ai_focus --notify
+  # Prefer market-separated presets (US vs 港股专项); ai_focus = US∪HK, no A-shares
+  python scripts/apply_watchlist.py --name us_ai_focus
+  python scripts/apply_watchlist.py --name hk_ai_focus
+  python scripts/prediction_accuracy_chain.py predict --watchlist us_ai_focus --notify
+  python scripts/prediction_accuracy_chain.py predict --watchlist hk_ai_focus --notify
 
   # Analyze explicit stocks with Auto Research
   python scripts/prediction_accuracy_chain.py predict --stocks NVDA,AMD,LITE --research
 
   # Recalculate daily(1d) + weekly(5d) DecisionSignal outcomes
-  python scripts/prediction_accuracy_chain.py recalc --watchlist ai_focus --horizons 1d,5d
+  python scripts/prediction_accuracy_chain.py recalc --watchlist us_ai_focus,hk_ai_focus --horizons 1d,5d
 
   # Paper soft-check from analysis_history
-  python scripts/prediction_accuracy_chain.py paper --watchlist ai_focus --window weekly
+  python scripts/prediction_accuracy_chain.py paper --watchlist us_ai_focus --window weekly
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ def _add_stock_source_args(parser: argparse.ArgumentParser, *, stocks_required: 
     parser.add_argument(
         "--watchlist",
         default=None,
-        help="Named preset under config/watchlists/ (e.g. ai_focus)",
+        help="Named preset under config/watchlists/ (us_ai_focus, hk_ai_focus, ai_focus, or comma-union)",
     )
 
 
