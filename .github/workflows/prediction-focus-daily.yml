@@ -11,7 +11,7 @@ on:
       watchlist:
         description: 'Watchlist preset(s)'
         required: false
-        default: 'us_ai_focus,hk_ai_focus'
+        default: 'special_attention'
       notify:
         description: 'Push focus cards'
         required: false
@@ -50,7 +50,7 @@ jobs:
 
       - name: Apply focus watchlist to env STOCK_LIST
         env:
-          WATCHLIST: ${{ github.event.inputs.watchlist || 'us_ai_focus,hk_ai_focus' }}
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'special_attention' }}
         run: |
           python scripts/apply_watchlist.py --name "$WATCHLIST"
 
@@ -83,7 +83,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           REPORT_TYPE: simple
           REPORT_LANGUAGE: ${{ vars.REPORT_LANGUAGE || secrets.REPORT_LANGUAGE || 'zh' }}
-          WATCHLIST: ${{ github.event.inputs.watchlist || 'us_ai_focus,hk_ai_focus' }}
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'special_attention' }}
           DO_NOTIFY: ${{ github.event.inputs.notify || 'true' }}
           DO_RESEARCH: ${{ github.event.inputs.research || 'true' }}
         run: |

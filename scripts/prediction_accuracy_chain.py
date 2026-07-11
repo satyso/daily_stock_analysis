@@ -3,9 +3,9 @@
 """CLI for daily/weekly prediction accuracy chain + optional Auto Research.
 
 Examples:
-  # Recommended daily loop (US Mag7+modules + HK internet/innovation)
+  # Recommended daily loop (screenshot「特别关注」special_attention)
   python scripts/prediction_accuracy_chain.py daily --notify
-  # or split markets:
+  # Mag7 / HK thematic:
   python scripts/prediction_accuracy_chain.py daily --watchlist us_ai_focus --notify
   python scripts/prediction_accuracy_chain.py daily --watchlist hk_ai_focus --notify
 

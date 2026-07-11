@@ -278,11 +278,13 @@ class PredictionAccuracyChain:
     ) -> Dict[str, Any]:
         """Daily focus loop: accuracy recalc → Auto Research + predict push → paper check.
 
-        Default watchlist when omitted: ``us_ai_focus,hk_ai_focus``.
+        Default watchlist when omitted: ``special_attention`` (user screenshot card).
         """
+        from src.services.watchlist_presets import DEFAULT_DAILY_WATCHLIST
+
         effective_watchlist = watchlist
         if not stocks and not effective_watchlist:
-            effective_watchlist = "us_ai_focus,hk_ai_focus"
+            effective_watchlist = DEFAULT_DAILY_WATCHLIST
 
         recalc_payload: Optional[Dict[str, Any]] = None
         if not skip_recalc:

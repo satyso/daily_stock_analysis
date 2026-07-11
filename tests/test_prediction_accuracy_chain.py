@@ -204,15 +204,16 @@ def test_daily_orchestrates_recalc_predict_paper(isolated_db):
     chain.paper_check.assert_called_once()
 
 
-def test_daily_defaults_to_us_and_hk_union(isolated_db):
+def test_daily_defaults_to_special_attention(isolated_db):
     chain = PredictionAccuracyChain(db_manager=isolated_db)
     chain.recalc = MagicMock(return_value={"mode": "recalc", "totals": {}, "stats": {}})
     chain.predict = MagicMock(return_value={"mode": "predict", "success_count": 0, "failed_count": 0})
     chain.paper_check = MagicMock(return_value={"mode": "paper_check", "soft_fit_hits": 0, "soft_fit_n": 0})
 
     result = chain.daily(skip_recalc=True, skip_paper=True, notify=False, research=False)
-    assert result["watchlist"] == "us_ai_focus,hk_ai_focus"
-    assert "AAPL" in result["stocks"]
-    assert "hk00700" in result["stocks"]
+    assert result["watchlist"] == "special_attention"
+    assert "NVDA" in result["stocks"]
+    assert "DKNG" in result["stocks"]
+    assert "688268" in result["stocks"]
     chain.recalc.assert_not_called()
     chain.paper_check.assert_not_called()

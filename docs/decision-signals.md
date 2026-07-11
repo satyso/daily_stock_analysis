@@ -166,33 +166,34 @@ P5 通过 sidecar 表保存用户反馈和后验结果，不扩展 `decision_sig
 日常可复用 `scripts/prediction_accuracy_chain.py`，复用 DecisionSignal outcome，不另建平行准确率表：
 
 ```bash
-# 推荐：每日闭环（默认 us_ai_focus + hk_ai_focus）
+# 推荐：每日闭环（默认截图「特别关注」special_attention）
 # 1) 复算准确率  2) Auto Research + 趋势预测推送（精简卡片含信息源）  3) 纸面核对
 python scripts/prediction_accuracy_chain.py daily --notify
 
-# 分市场：
+# 主题名单（Mag7 / 港股）可显式指定：
 python scripts/prediction_accuracy_chain.py daily --watchlist us_ai_focus --notify
 python scripts/prediction_accuracy_chain.py daily --watchlist hk_ai_focus --notify
 
 # 写入 STOCK_LIST（可选）
+python scripts/apply_watchlist.py --name special_attention
 python scripts/apply_watchlist.py --name us_ai_focus
-python scripts/apply_watchlist.py --name hk_ai_focus
 
 # 单步：
-python scripts/prediction_accuracy_chain.py predict --watchlist us_ai_focus --research --notify
-python scripts/prediction_accuracy_chain.py recalc --watchlist us_ai_focus,hk_ai_focus --horizons 1d,5d
-python scripts/prediction_accuracy_chain.py paper --watchlist us_ai_focus --window daily
+python scripts/prediction_accuracy_chain.py predict --watchlist special_attention --research --notify
+python scripts/prediction_accuracy_chain.py recalc --watchlist special_attention --horizons 1d,5d
+python scripts/prediction_accuracy_chain.py paper --watchlist special_attention --window daily
 ```
 
 主题预设（`python scripts/apply_watchlist.py --list`）：
 
-- `us_ai_focus`：美股 Mag7 + CPU/存储/光通信/航天各板块龙头（默认 12 只）
-- `hk_ai_focus`：港股互联网 + 创新（默认 6 只）
+- `special_attention`：用户截图「特别关注」11 只（默认日更）
+- `us_ai_focus`：美股 Mag7 + CPU/存储/光通信/航天各板块龙头
+- `hk_ai_focus`：港股互联网 + 创新
 - `ai_focus`：US ∪ HK 合并，不含 A 股
 
 推送卡片：`REPORT_TYPE=simple` / `brief` 使用精简 focus 格式（趋势 + 评分 + 一句话 + 信息源），避免长文。
 
-GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按工作日定时跑 `daily`，也可手动 `workflow_dispatch`。
+GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按工作日定时跑 `daily`（默认 `special_attention`），也可手动 `workflow_dispatch`。
 
 约定：`daily`/`1d` = 次日验证；`weekly`/`5d` = 约一周（5 个交易日）。新信号默认 horizon 仍多为 `3d`；`recalc --horizons 1d,5d` 会按请求 horizon 评估，不要求信号自身 horizon 等于 1d/5d。
 

@@ -29,7 +29,10 @@ WATCHLIST_MARKETS: Dict[str, str] = {
     "us_ai_focus": "us",
     "hk_ai_focus": "hk",
     "ai_focus": "us+hk",
+    "special_attention": "special",
 }
+
+DEFAULT_DAILY_WATCHLIST = "special_attention"
 
 # Pure 6-digit CN A/B share pattern (exclude from US/HK smart presets).
 _A_SHARE_CODE_RE = re.compile(r"^\d{6}$")

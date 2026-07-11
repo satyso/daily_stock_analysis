@@ -89,6 +89,25 @@ def test_apply_watchlist_updates_env(tmp_path: Path):
     assert serialized.startswith("AAPL,")
 
 
+def test_special_attention_preset_matches_screenshot():
+    codes = load_watchlist_codes("special_attention")
+    expected = [
+        "000660",
+        "688268",
+        "NVDA",
+        "SNDK",
+        "ETHW",
+        "LITE",
+        "AMD",
+        "GEV",
+        "GLL",
+        "DKNG",
+        "CONL",
+    ]
+    assert codes == expected
+    assert describe_watchlists()["special_attention"]["market"] == "special"
+
+
 def test_missing_watchlist_raises():
     with pytest.raises(FileNotFoundError):
         load_watchlist_codes("does_not_exist")
