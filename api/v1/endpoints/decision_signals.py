@@ -291,6 +291,7 @@ def get_outcome_stats(
     horizons: Optional[List[str]] = Query(None),
     engine_version: Optional[str] = Query(None),
     statuses: Optional[List[str]] = Query(None),
+    stock_code: Optional[str] = Query(None, description="按股票代码过滤统计；支持单码"),
 ) -> DecisionSignalOutcomeStatsResponse:
     service = DecisionSignalOutcomeService()
     try:
@@ -299,6 +300,7 @@ def get_outcome_stats(
                 horizons=horizons,
                 engine_version=engine_version,
                 statuses=statuses,
+                stock_code=stock_code,
             )
         )
     except ValueError as exc:

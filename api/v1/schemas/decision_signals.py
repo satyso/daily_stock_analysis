@@ -176,6 +176,7 @@ class DecisionSignalOutcomeStatsResponse(BaseModel):
     engine_version: str
     horizons: Optional[List[str]] = None
     statuses: List[str] = Field(default_factory=list)
+    stock_codes: Optional[List[str]] = None
     total: int
     completed: int
     unable: int
