@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Render special-attention tomorrow % forecast card as Markdown + PNG image.
+"""Render focus card: full watch universe + industry views + accuracy.
 
-Card rules (user):
-- stock **names** only (no codes)
-- predict **tomorrow** expected % move (not just direction)
-- no information-source line
-- convert via Chrome headless screenshot (API-equivalent image copy)
+Card rules:
+- stock **names** only (no codes in display)
+- tomorrow expected % + range
+- per-stock direction accuracy + confidence label
+- industry section: view %, key stock, industry accuracy
+- universe default: special_attention ∪ us_ai_focus ∪ hk_ai_focus
 
 Examples:
   python scripts/render_focus_card.py
-  python scripts/render_focus_card.py --watchlist special_attention --out-dir /opt/cursor/artifacts
+  python scripts/render_focus_card.py --watchlist special_attention,us_ai_focus,hk_ai_focus
 """
 
 from __future__ import annotations
@@ -19,10 +20,11 @@ import argparse
 import html
 import json
 import math
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -32,7 +34,8 @@ from src.config import setup_env
 
 setup_env()
 
-# Display names for the maintained special-attention list
+DEFAULT_CARD_WATCHLIST = "special_attention,us_ai_focus,hk_ai_focus"
+
 NAME_MAP = {
     "000660": "SK海力士",
     "688268": "华特气体",
@@ -45,29 +48,57 @@ NAME_MAP = {
     "GLL": "黄金反向两倍",
     "DKNG": "DraftKings",
     "CONL": "Coinbase两倍做多",
+    "AAPL": "苹果",
+    "MSFT": "微软",
+    "GOOGL": "谷歌",
+    "AMZN": "亚马逊",
+    "META": "Meta",
+    "TSLA": "特斯拉",
+    "AVGO": "博通",
+    "MU": "美光",
+    "RKLB": "Rocket Lab",
+    "hk00700": "腾讯",
+    "hk09988": "阿里巴巴",
+    "hk03690": "美团",
+    "hk01810": "小米",
+    "hk09888": "百度",
+    "hk00020": "商汤",
 }
 
-YF_MAP = {
-    "000660": "000660.KS",
-    "688268": "688268.SS",
-    "NVDA": "NVDA",
-    "SNDK": "SNDK",
-    "ETHW": "ETHW",
-    "LITE": "LITE",
-    "AMD": "AMD",
-    "GEV": "GEV",
-    "GLL": "GLL",
-    "DKNG": "DKNG",
-    "CONL": "CONL",
-}
+# Industry buckets (display order). A code may appear in one primary industry only.
+INDUSTRY_ORDER: List[Tuple[str, List[str]]] = [
+    ("特别关注·存储/材料", ["000660", "688268", "SNDK", "MU"]),
+    ("算力芯片", ["NVDA", "AMD", "AVGO"]),
+    ("光通信", ["LITE"]),
+    ("Mag7巨头", ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA"]),
+    ("航天", ["RKLB"]),
+    ("电力能源", ["GEV"]),
+    ("加密/数字资产", ["ETHW", "CONL"]),
+    ("宏观对冲", ["GLL"]),
+    ("消费娱乐", ["DKNG"]),
+    ("港股互联网", ["hk00700", "hk09988", "hk03690", "hk01810"]),
+    ("港股创新", ["hk09888", "hk00020"]),
+]
+
+_HK_RE = re.compile(r"^hk0*(\d{1,5})$", re.IGNORECASE)
+
+
+def _to_yf_symbol(code: str) -> str:
+    text = str(code or "").strip()
+    upper = text.upper()
+    if upper == "000660":
+        return "000660.KS"
+    if upper == "688268":
+        return "688268.SS"
+    m = _HK_RE.match(text)
+    if m:
+        num = m.group(1).zfill(4)
+        return f"{num}.HK"
+    return upper
 
 
 def _predict_tomorrow_pct(closes: List[float]) -> Dict[str, float]:
-    """Point estimate for next-session % move from recent daily returns.
-
-    Uses mean of last 5 daily returns, shrunk toward 0 by half of recent
-    volatility so estimates stay conservative (not wild).
-    """
+    """Point estimate from recent daily returns (mean shrunk toward 0)."""
     rets = []
     for i in range(1, len(closes)):
         prev = closes[i - 1]
@@ -79,10 +110,7 @@ def _predict_tomorrow_pct(closes: List[float]) -> Dict[str, float]:
     mean = sum(recent) / len(recent)
     var = sum((x - mean) ** 2 for x in recent) / max(1, len(recent) - 1)
     std = math.sqrt(var) if var > 0 else 0.0
-    # shrink mean toward 0
-    pred = mean * 0.5
-    # clamp extreme single-day forecasts
-    pred = max(-8.0, min(8.0, pred))
+    pred = max(-8.0, min(8.0, mean * 0.5))
     band = max(0.4, std * 0.6)
     return {
         "pred_pct": round(pred, 2),
@@ -92,7 +120,6 @@ def _predict_tomorrow_pct(closes: List[float]) -> Dict[str, float]:
 
 
 def _direction_hit(pred_pct: float, actual_pct: float, *, flat_eps: float = 0.15) -> bool:
-    """Direction hit: same sign, or both near-flat."""
     if abs(pred_pct) < flat_eps and abs(actual_pct) < flat_eps:
         return True
     if pred_pct == 0 or actual_pct == 0:
@@ -101,9 +128,8 @@ def _direction_hit(pred_pct: float, actual_pct: float, *, flat_eps: float = 0.15
 
 
 def _walk_forward_accuracy(closes: List[float], *, window: int = 12) -> Dict[str, Any]:
-    """Backtest the same heuristic over recent sessions (direction accuracy)."""
     if len(closes) < 8:
-        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足"}
+        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足", "confidence": "不足"}
     end_i = len(closes) - 1
     start_i = max(5, end_i - window)
     hits = 0
@@ -118,13 +144,20 @@ def _walk_forward_accuracy(closes: List[float], *, window: int = 12) -> Dict[str
         if _direction_hit(float(pred), float(actual)):
             hits += 1
     if samples <= 0:
-        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足"}
+        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足", "confidence": "不足"}
     acc = round(100.0 * hits / samples, 1)
+    if acc >= 60:
+        confidence = "高"
+    elif acc >= 45:
+        confidence = "中"
+    else:
+        confidence = "低"
     return {
         "acc_pct": acc,
         "hits": hits,
         "samples": samples,
         "acc_label": f"{acc:.0f}%({hits}/{samples})",
+        "confidence": confidence,
     }
 
 
@@ -142,6 +175,13 @@ def _overall_accuracy(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _industry_for_code(code: str) -> str:
+    for name, members in INDUSTRY_ORDER:
+        if code in members:
+            return name
+    return "其他"
+
+
 def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
     import yfinance as yf
 
@@ -149,13 +189,14 @@ def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
     start = end - timedelta(days=60)
     rows: List[Dict[str, Any]] = []
     for code in codes:
-        name = NAME_MAP.get(code, code)
-        ysym = YF_MAP.get(code, code)
+        name = NAME_MAP.get(code, NAME_MAP.get(code.upper(), code))
+        ysym = _to_yf_symbol(code)
+        industry = _industry_for_code(code)
         try:
             hist = yf.Ticker(ysym).history(start=start.isoformat(), end=(end + timedelta(days=1)).isoformat())
             closes = [float(x) for x in hist["Close"].dropna().tolist()] if hist is not None and not hist.empty else []
             if len(closes) < 3:
-                rows.append({"name": name, "error": "数据不足"})
+                rows.append({"name": name, "code": code, "industry": industry, "error": "数据不足"})
                 continue
             pred = _predict_tomorrow_pct(closes)
             acc = _walk_forward_accuracy(closes)
@@ -165,41 +206,127 @@ def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
             rows.append({
                 "name": name,
                 "code": code,
+                "industry": industry,
                 "last": round(last, 4),
                 "today_pct": today_pct,
                 **pred,
                 **acc,
             })
         except Exception as exc:
-            rows.append({"name": name, "error": str(exc)})
+            rows.append({"name": name, "code": code, "industry": industry, "error": str(exc)})
     return rows
 
 
-def format_card_markdown(rows: List[Dict[str, Any]], *, title_date: str) -> str:
+def build_industry_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_code = {r["code"]: r for r in rows if r.get("code")}
+    industries: List[Dict[str, Any]] = []
+    for industry_name, members in INDUSTRY_ORDER:
+        present = [by_code[c] for c in members if c in by_code]
+        valid = [r for r in present if "pred_pct" in r]
+        if not present:
+            continue
+        if not valid:
+            industries.append({
+                "industry": industry_name,
+                "pred_pct": None,
+                "acc_label": "样本不足",
+                "key_name": "—",
+                "key_pred": None,
+                "count": len(present),
+            })
+            continue
+        pred = round(sum(float(r["pred_pct"]) for r in valid) / len(valid), 2)
+        hits = sum(int(r.get("hits") or 0) for r in valid)
+        samples = sum(int(r.get("samples") or 0) for r in valid)
+        acc_label = (
+            f"{round(100.0 * hits / samples):.0f}%({hits}/{samples})" if samples else "样本不足"
+        )
+        # Key stock: highest |pred| among members; tie-break by accuracy
+        key = max(
+            valid,
+            key=lambda r: (abs(float(r["pred_pct"])), float(r.get("acc_pct") or 0.0)),
+        )
+        industries.append({
+            "industry": industry_name,
+            "pred_pct": pred,
+            "acc_label": acc_label,
+            "key_name": key["name"],
+            "key_pred": float(key["pred_pct"]),
+            "key_acc": key.get("acc_label", "—"),
+            "key_confidence": key.get("confidence", "—"),
+            "count": len(present),
+        })
+    # orphan codes not in INDUSTRY_ORDER
+    known = {c for _, members in INDUSTRY_ORDER for c in members}
+    orphans = [r for r in rows if r.get("code") and r["code"] not in known and "pred_pct" in r]
+    if orphans:
+        pred = round(sum(float(r["pred_pct"]) for r in orphans) / len(orphans), 2)
+        hits = sum(int(r.get("hits") or 0) for r in orphans)
+        samples = sum(int(r.get("samples") or 0) for r in orphans)
+        key = max(orphans, key=lambda r: abs(float(r["pred_pct"])))
+        industries.append({
+            "industry": "其他",
+            "pred_pct": pred,
+            "acc_label": f"{round(100.0 * hits / samples):.0f}%({hits}/{samples})" if samples else "样本不足",
+            "key_name": key["name"],
+            "key_pred": float(key["pred_pct"]),
+            "key_acc": key.get("acc_label", "—"),
+            "key_confidence": key.get("confidence", "—"),
+            "count": len(orphans),
+        })
+    return industries
+
+
+def format_card_markdown(
+    rows: List[Dict[str, Any]],
+    industries: List[Dict[str, Any]],
+    *,
+    title_date: str,
+) -> str:
     overall = _overall_accuracy(rows)
     lines = [
-        f"# 特别关注 · 明日预测",
-        f"{title_date} · 近端方向准确率 {overall['acc_label']}",
+        "# 特别关注 · 全量行业预测",
+        f"{title_date} · 覆盖 {len(rows)} 只 · 近端方向准确率 {overall['acc_label']}",
         "",
-        "| 股票 | 明日预期 | 区间 | 准确率 |",
-        "|---|---:|---:|---:|",
+        "## 行业观点（含关键股）",
+        "",
+        "| 行业 | 明日观点 | 关键股 | 关键股预期 | 行业准确率 |",
+        "|---|---:|---|---:|---:|",
+    ]
+    for ind in industries:
+        pred = ind.get("pred_pct")
+        if pred is None:
+            pred_s = "暂无"
+            key_pred_s = "—"
+        else:
+            pred_s = f"{pred:+.2f}%"
+            kp = ind.get("key_pred")
+            key_pred_s = f"{kp:+.2f}%" if kp is not None else "—"
+        lines.append(
+            f"| {ind['industry']} | {pred_s} | {ind['key_name']} | {key_pred_s} | {ind['acc_label']} |"
+        )
+
+    lines += [
+        "",
+        "## 全部标的（逐票准确率 / 可信度）",
+        "",
+        "| 股票 | 行业 | 明日预期 | 准确率 | 可信度 |",
+        "|---|---|---:|---:|---|",
     ]
     for row in rows:
         name = row["name"]
+        industry = row.get("industry", "—")
         if row.get("error"):
-            lines.append(f"| {name} | 暂无 | — | — |")
+            lines.append(f"| {name} | {industry} | 暂无 | — | 不足 |")
             continue
         pred = row["pred_pct"]
         sign = "+" if pred > 0 else ""
-        low = row["low_pct"]
-        high = row["high_pct"]
         lines.append(
-            f"| {name} | {sign}{pred:.2f}% | {low:+.2f}% ~ {high:+.2f}% | {row.get('acc_label', '—')} |"
+            f"| {name} | {industry} | {sign}{pred:.2f}% | "
+            f"{row.get('acc_label', '—')} | {row.get('confidence', '—')} |"
         )
-    lines += [
-        "",
-        "## Top 5（明日弹性）",
-    ]
+
+    lines += ["", "## Top 5（明日弹性）"]
     scored = sorted(
         [r for r in rows if "pred_pct" in r],
         key=lambda r: abs(float(r["pred_pct"])),
@@ -209,91 +336,42 @@ def format_card_markdown(rows: List[Dict[str, Any]], *, title_date: str) -> str:
         pred = row["pred_pct"]
         sign = "+" if pred > 0 else ""
         lines.append(
-            f"{i}. **{row['name']}**  明日 {sign}{pred:.2f}% "
-            f"（{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%）· 准确率 {row.get('acc_label', '—')}"
+            f"{i}. **{row['name']}**  {sign}{pred:.2f}% · "
+            f"准确率 {row.get('acc_label', '—')} · 可信度{row.get('confidence', '—')}"
         )
     lines += [
         "",
-        "说明：明日涨跌幅为近端收益收缩估计；准确率为同法近12个交易日方向命中率，供决策参考，不构成投资建议。",
+        "说明：明日%=近端收益收缩估计；准确率=同法近12个交易日方向命中；"
+        "可信度：≥60%高 / ≥45%中 / <45%低。仅供参考，不构成投资建议。",
     ]
     return "\n".join(lines) + "\n"
 
 
-def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
-    overall = _overall_accuracy(rows)
-    body_rows = []
-    for row in rows:
-        name = html.escape(row["name"])
-        if row.get("error"):
-            body_rows.append(
-                f"<tr><td>{name}</td><td class='muted'>暂无</td>"
-                f"<td class='muted'>—</td><td class='muted'>—</td></tr>"
-            )
-            continue
-        pred = float(row["pred_pct"])
-        cls = "up" if pred > 0 else ("down" if pred < 0 else "flat")
-        sign = "+" if pred > 0 else ""
-        body_rows.append(
-            "<tr>"
-            f"<td class='name'>{name}</td>"
-            f"<td class='{cls}'>{sign}{pred:.2f}%</td>"
-            f"<td class='range'>{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%</td>"
-            f"<td class='acc'>{html.escape(str(row.get('acc_label') or '—'))}</td>"
-            "</tr>"
-        )
-    top = sorted([r for r in rows if "pred_pct" in r], key=lambda r: abs(float(r["pred_pct"])), reverse=True)[:5]
-    top_html = []
-    for i, row in enumerate(top, 1):
-        pred = float(row["pred_pct"])
-        cls = "up" if pred > 0 else ("down" if pred < 0 else "flat")
-        sign = "+" if pred > 0 else ""
-        top_html.append(
-            f"<li><span class='name'>{html.escape(row['name'])}</span> "
-            f"<span class='{cls}'>{sign}{pred:.2f}%</span> "
-            f"<span class='acc'>{html.escape(str(row.get('acc_label') or '—'))}</span></li>"
-        )
-    return f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"/>
-<style>
-  body {{ margin:0; font-family: "PingFang SC","Noto Sans CJK SC","Segoe UI",sans-serif;
-         background: linear-gradient(160deg,#0f172a 0%,#1e293b 55%,#0b1220 100%); color:#e2e8f0; }}
-  .card {{ width: 720px; margin: 24px auto; padding: 28px 28px 22px;
-           background: rgba(15,23,42,.92); border: 1px solid rgba(148,163,184,.25);
-           border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }}
-  h1 {{ margin:0 0 6px; font-size: 28px; letter-spacing: .02em; }}
-  .sub {{ color:#94a3b8; margin-bottom: 18px; font-size: 14px; }}
-  table {{ width:100%; border-collapse: collapse; font-size: 15px; }}
-  th {{ text-align:left; color:#94a3b8; font-weight:600; padding: 8px 6px; border-bottom:1px solid rgba(148,163,184,.25); }}
-  td {{ padding: 10px 6px; border-bottom:1px solid rgba(148,163,184,.12); }}
-  .name {{ font-weight: 600; color:#f8fafc; }}
-  .up {{ color:#34d399; font-weight:700; }}
-  .down {{ color:#fb7185; font-weight:700; }}
-  .flat {{ color:#e2e8f0; font-weight:700; }}
-  .range,.muted,.acc {{ color:#94a3b8; }}
-  h2 {{ margin: 22px 0 10px; font-size: 18px; }}
-  ol {{ margin:0; padding-left: 22px; }}
-  li {{ margin: 6px 0; }}
-  .note {{ margin-top: 18px; color:#64748b; font-size: 12px; }}
-</style></head><body>
-<div class="card">
-  <h1>特别关注 · 明日预测</h1>
-  <div class="sub">{html.escape(title_date)} · 近端方向准确率 {html.escape(overall['acc_label'])}</div>
-  <table>
-    <thead><tr><th>股票</th><th>明日预期</th><th>区间</th><th>准确率</th></tr></thead>
-    <tbody>
-      {''.join(body_rows)}
-    </tbody>
-  </table>
-  <h2>Top 5</h2>
-  <ol>{''.join(top_html)}</ol>
-  <div class="note">明日涨跌幅为近端收益收缩估计；准确率为同法近12个交易日方向命中率，仅供参考，不构成投资建议。</div>
-</div>
-</body></html>
-"""
+def _pct_color(pred: float) -> Tuple[int, int, int]:
+    if pred > 0:
+        return (52, 211, 153)
+    if pred < 0:
+        return (251, 113, 133)
+    return (226, 232, 240)
 
 
-def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_png: Path) -> bool:
-    """Draw a clean forecast card image with Pillow (no browser dependency)."""
+def _conf_color(label: str) -> Tuple[int, int, int]:
+    if label == "高":
+        return (52, 211, 153)
+    if label == "中":
+        return (251, 191, 36)
+    if label == "低":
+        return (251, 113, 133)
+    return (148, 163, 184)
+
+
+def render_png_with_pillow(
+    rows: List[Dict[str, Any]],
+    industries: List[Dict[str, Any]],
+    *,
+    title_date: str,
+    out_png: Path,
+) -> bool:
     try:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
@@ -301,80 +379,118 @@ def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_p
 
     font_path = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
     try:
-        font_title = ImageFont.truetype(font_path, 34)
-        font_sub = ImageFont.truetype(font_path, 18)
-        font_row = ImageFont.truetype(font_path, 20)
-        font_small = ImageFont.truetype(font_path, 15)
+        font_title = ImageFont.truetype(font_path, 32)
+        font_sub = ImageFont.truetype(font_path, 17)
+        font_section = ImageFont.truetype(font_path, 20)
+        font_row = ImageFont.truetype(font_path, 17)
+        font_small = ImageFont.truetype(font_path, 14)
     except OSError:
-        font_title = font_sub = font_row = font_small = ImageFont.load_default()
+        font_title = font_sub = font_section = font_row = font_small = ImageFont.load_default()
 
-    width = 760
+    width = 900
     overall = _overall_accuracy(rows)
     top5 = sorted([r for r in rows if "pred_pct" in r], key=lambda r: abs(float(r["pred_pct"])), reverse=True)[:5]
-    height = 170 + len(rows) * 40 + 40 + len(top5) * 32 + 100
+    height = (
+        150
+        + 36
+        + len(industries) * 30
+        + 50
+        + 36
+        + len(rows) * 28
+        + 50
+        + len(top5) * 28
+        + 90
+    )
     img = Image.new("RGB", (width, height), (15, 23, 42))
     draw = ImageDraw.Draw(img)
-
     draw.rounded_rectangle(
-        (24, 24, width - 24, height - 24),
-        radius=22,
+        (18, 18, width - 18, height - 18),
+        radius=20,
         fill=(20, 30, 48),
         outline=(71, 85, 105),
         width=2,
     )
-    draw.text((48, 44), "特别关注 · 明日预测", font=font_title, fill=(248, 250, 252))
+
+    draw.text((40, 36), "特别关注 · 全量行业预测", font=font_title, fill=(248, 250, 252))
     draw.text(
-        (48, 90),
-        f"{title_date} · 近端方向准确率 {overall['acc_label']}",
+        (40, 78),
+        f"{title_date} · 覆盖 {len(rows)} 只 · 近端方向准确率 {overall['acc_label']}",
         font=font_sub,
         fill=(148, 163, 184),
     )
 
-    y = 130
-    draw.text((48, y), "股票", font=font_small, fill=(148, 163, 184))
-    draw.text((280, y), "明日预期", font=font_small, fill=(148, 163, 184))
-    draw.text((420, y), "区间", font=font_small, fill=(148, 163, 184))
-    draw.text((600, y), "准确率", font=font_small, fill=(148, 163, 184))
-    y += 28
-    draw.line((48, y, width - 48, y), fill=(51, 65, 85), width=1)
-    y += 12
+    y = 118
+    draw.text((40, y), "一、行业观点（含关键股）", font=font_section, fill=(226, 232, 240))
+    y += 30
+    draw.text((40, y), "行业", font=font_small, fill=(148, 163, 184))
+    draw.text((250, y), "明日观点", font=font_small, fill=(148, 163, 184))
+    draw.text((370, y), "关键股", font=font_small, fill=(148, 163, 184))
+    draw.text((540, y), "关键股预期", font=font_small, fill=(148, 163, 184))
+    draw.text((680, y), "行业准确率", font=font_small, fill=(148, 163, 184))
+    y += 22
+    draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
+    y += 8
+
+    for ind in industries:
+        pred = ind.get("pred_pct")
+        draw.text((40, y), ind["industry"][:14], font=font_row, fill=(248, 250, 252))
+        if pred is None:
+            draw.text((250, y), "暂无", font=font_row, fill=(148, 163, 184))
+        else:
+            draw.text((250, y), f"{pred:+.2f}%", font=font_row, fill=_pct_color(float(pred)))
+        draw.text((370, y), str(ind.get("key_name") or "—")[:10], font=font_row, fill=(226, 232, 240))
+        kp = ind.get("key_pred")
+        if kp is None:
+            draw.text((540, y), "—", font=font_row, fill=(148, 163, 184))
+        else:
+            draw.text((540, y), f"{float(kp):+.2f}%", font=font_row, fill=_pct_color(float(kp)))
+        draw.text((680, y), str(ind.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+        y += 28
+
+    y += 14
+    draw.text((40, y), "二、全部标的（准确率 / 我怎么看这只的可信度）", font=font_section, fill=(226, 232, 240))
+    y += 30
+    draw.text((40, y), "股票", font=font_small, fill=(148, 163, 184))
+    draw.text((200, y), "行业", font=font_small, fill=(148, 163, 184))
+    draw.text((400, y), "明日预期", font=font_small, fill=(148, 163, 184))
+    draw.text((520, y), "准确率", font=font_small, fill=(148, 163, 184))
+    draw.text((680, y), "可信度", font=font_small, fill=(148, 163, 184))
+    y += 22
+    draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
+    y += 8
 
     for row in rows:
-        name = row["name"]
+        draw.text((40, y), row["name"][:10], font=font_row, fill=(248, 250, 252))
+        draw.text((200, y), str(row.get("industry") or "—")[:12], font=font_row, fill=(148, 163, 184))
         if row.get("error"):
-            draw.text((48, y), name, font=font_row, fill=(248, 250, 252))
-            draw.text((280, y), "暂无", font=font_row, fill=(148, 163, 184))
-            y += 38
-            continue
-        pred = float(row["pred_pct"])
-        color = (52, 211, 153) if pred > 0 else ((251, 113, 133) if pred < 0 else (226, 232, 240))
-        sign = "+" if pred > 0 else ""
-        draw.text((48, y), name, font=font_row, fill=(248, 250, 252))
-        draw.text((280, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
-        draw.text(
-            (420, y),
-            f"{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%",
-            font=font_row,
-            fill=(148, 163, 184),
-        )
-        draw.text((600, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
-        y += 38
+            draw.text((400, y), "暂无", font=font_row, fill=(148, 163, 184))
+            draw.text((520, y), "—", font=font_row, fill=(148, 163, 184))
+            draw.text((680, y), "不足", font=font_row, fill=(148, 163, 184))
+        else:
+            pred = float(row["pred_pct"])
+            sign = "+" if pred > 0 else ""
+            draw.text((400, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+            draw.text((520, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+            conf = str(row.get("confidence") or "—")
+            draw.text((680, y), conf, font=font_row, fill=_conf_color(conf))
+        y += 26
 
-    y += 8
-    draw.text((48, y), "Top 5", font=font_sub, fill=(226, 232, 240))
+    y += 12
+    draw.text((40, y), "三、Top 5（明日弹性）", font=font_section, fill=(226, 232, 240))
     y += 28
     for i, row in enumerate(top5, 1):
         pred = float(row["pred_pct"])
-        color = (52, 211, 153) if pred > 0 else ((251, 113, 133) if pred < 0 else (226, 232, 240))
         sign = "+" if pred > 0 else ""
-        draw.text((48, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
-        draw.text((360, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
-        draw.text((500, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
-        y += 32
+        conf = str(row.get("confidence") or "—")
+        draw.text((40, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
+        draw.text((280, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+        draw.text((400, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+        draw.text((560, y), f"可信度{conf}", font=font_row, fill=_conf_color(conf))
+        y += 26
 
     draw.text(
-        (48, height - 70),
-        "准确率=同法近12个交易日方向命中；明日%为近端收益收缩估计，仅供参考。",
+        (40, height - 58),
+        "准确率=近12日方向命中；可信度≥60%高 / ≥45%中 / <45%低。启发式估计，仅供参考。",
         font=font_small,
         fill=(100, 116, 139),
     )
@@ -383,8 +499,8 @@ def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_p
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Render tomorrow % focus card image")
-    parser.add_argument("--watchlist", default="special_attention")
+    parser = argparse.ArgumentParser(description="Render full industry focus card image")
+    parser.add_argument("--watchlist", default=DEFAULT_CARD_WATCHLIST)
     parser.add_argument("--out-dir", default="/opt/cursor/artifacts")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
@@ -393,26 +509,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     codes = load_watchlist_codes(args.watchlist)
     rows = build_rows(codes)
+    industries = build_industry_rows(rows)
     overall = _overall_accuracy(rows)
     today = datetime.now().strftime("%Y-%m-%d")
-    md = format_card_markdown(rows, title_date=today)
-    html_text = format_card_html(rows, title_date=today)
+    md = format_card_markdown(rows, industries, title_date=today)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"focus_card_tomorrow_{today.replace('-', '')}"
+    stem = f"focus_card_full_{today.replace('-', '')}"
     md_path = out_dir / f"{stem}.md"
-    html_path = out_dir / f"{stem}.html"
     png_path = out_dir / f"{stem}.png"
     json_path = out_dir / f"{stem}.json"
+    # also refresh the legacy tomorrow stem for continuity
+    legacy_png = out_dir / f"focus_card_tomorrow_{today.replace('-', '')}.png"
+    legacy_md = out_dir / f"focus_card_tomorrow_{today.replace('-', '')}.md"
+
     md_path.write_text(md, encoding="utf-8")
-    html_path.write_text(html_text, encoding="utf-8")
+    legacy_md.write_text(md, encoding="utf-8")
     json_path.write_text(
         json.dumps(
             {
                 "date": today,
                 "watchlist": args.watchlist,
                 "overall_accuracy": overall,
+                "industries": industries,
                 "rows": rows,
             },
             ensure_ascii=False,
@@ -420,15 +540,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ),
         encoding="utf-8",
     )
-    ok = render_png_with_pillow(rows, title_date=today, out_png=png_path)
+    ok = render_png_with_pillow(rows, industries, title_date=today, out_png=png_path)
+    if ok:
+        # copy to legacy name so previous links still work
+        legacy_png.write_bytes(png_path.read_bytes())
 
     payload = {
         "markdown": str(md_path),
-        "html": str(html_path),
         "png": str(png_path) if ok else None,
+        "legacy_png": str(legacy_png) if ok else None,
         "json": str(json_path),
         "image_ok": ok,
         "count": len(rows),
+        "industry_count": len(industries),
         "overall_accuracy": overall,
     }
     if args.json:
