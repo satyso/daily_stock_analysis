@@ -301,11 +301,28 @@ def format_card_markdown(
     *,
     title_date: str,
 ) -> str:
+    ups, downs = _top_up_down(rows, limit=5)
     lines = [
         "# 宋总特别关注",
         title_date,
         "",
-        "| 行业 | 明日观点 | 关键股 | 关键股预期 |",
+        "| Top5 涨 | % | Top5 跌 | % |",
+        "|---|---:|---|---:|",
+    ]
+    for i in range(max(len(ups), len(downs), 1)):
+        if i < len(ups):
+            left_name, left_pct = ups[i]["name"], f"+{ups[i]['pred_pct']:.2f}%"
+        else:
+            left_name, left_pct = "-", "-"
+        if i < len(downs):
+            right_name, right_pct = downs[i]["name"], f"{downs[i]['pred_pct']:.2f}%"
+        else:
+            right_name, right_pct = "-", "-"
+        lines.append(f"| {left_name} | {left_pct} | {right_name} | {right_pct} |")
+
+    lines += [
+        "",
+        "| 行业 | 观点 | 关键股 | % |",
         "|---|---:|---|---:|",
     ]
     for ind in industries:
@@ -323,32 +340,26 @@ def format_card_markdown(
 
     lines += [
         "",
-        "| 股票 | 行业 | 明日预期 |",
-        "|---|---|---:|",
+        "| 股票 | % | 股票 | % |",
+        "|---|---:|---|---:|",
     ]
-    for row in rows:
-        name = row["name"]
-        industry = row.get("industry", "-")
-        if row.get("error"):
-            lines.append(f"| {name} | {industry} | 暂无 |")
-            continue
-        pred = row["pred_pct"]
-        sign = "+" if pred > 0 else ""
-        lines.append(f"| {name} | {industry} | {sign}{pred:.2f}% |")
+    valid = [r for r in rows if "pred_pct" in r or r.get("error")]
+    for i in range(0, len(valid), 2):
+        left = valid[i]
+        right = valid[i + 1] if i + 1 < len(valid) else None
 
-    ups, downs = _top_up_down(rows, limit=5)
-    lines += ["", "## Top5 涨"]
-    if not ups:
-        lines.append("-")
-    for i, row in enumerate(ups, 1):
-        pred = row["pred_pct"]
-        lines.append(f"{i}. {row['name']}  +{pred:.2f}%")
-    lines += ["", "## Top5 跌"]
-    if not downs:
-        lines.append("-")
-    for i, row in enumerate(downs, 1):
-        pred = row["pred_pct"]
-        lines.append(f"{i}. {row['name']}  {pred:.2f}%")
+        def _cell(row: Optional[Dict[str, Any]]) -> Tuple[str, str]:
+            if row is None:
+                return "-", "-"
+            if row.get("error"):
+                return row["name"], "暂无"
+            pred = float(row["pred_pct"])
+            sign = "+" if pred > 0 else ""
+            return row["name"], f"{sign}{pred:.2f}%"
+
+        ln, lp = _cell(left)
+        rn, rp = _cell(right)
+        lines.append(f"| {ln} | {lp} | {rn} | {rp} |")
     return "\n".join(lines) + "\n"
 
 
@@ -358,16 +369,6 @@ def _pct_color(pred: float) -> Tuple[int, int, int]:
     if pred < 0:
         return (251, 113, 133)
     return (226, 232, 240)
-
-
-def _conf_color(label: str) -> Tuple[int, int, int]:
-    if label == "高":
-        return (52, 211, 153)
-    if label == "中":
-        return (251, 191, 36)
-    if label == "低":
-        return (251, 113, 133)
-    return (148, 163, 184)
 
 
 def render_png_with_pillow(
@@ -384,109 +385,121 @@ def render_png_with_pillow(
 
     font_path = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
     try:
-        font_title = ImageFont.truetype(font_path, 32)
-        font_sub = ImageFont.truetype(font_path, 17)
-        font_section = ImageFont.truetype(font_path, 20)
-        font_row = ImageFont.truetype(font_path, 17)
+        font_title = ImageFont.truetype(font_path, 40)
+        font_sub = ImageFont.truetype(font_path, 16)
+        font_section = ImageFont.truetype(font_path, 22)
+        font_row = ImageFont.truetype(font_path, 18)
         font_small = ImageFont.truetype(font_path, 14)
+        font_pct = ImageFont.truetype(font_path, 20)
     except OSError:
-        font_title = font_sub = font_section = font_row = font_small = ImageFont.load_default()
+        font_title = font_sub = font_section = font_row = font_small = font_pct = ImageFont.load_default()
 
-    width = 860
     ups, downs = _top_up_down(rows, limit=5)
+    valid = [r for r in rows if "pred_pct" in r or r.get("error")]
+    pair_rows = (len(valid) + 1) // 2
+    top_block = 48 + max(len(ups), len(downs), 1) * 34
+    width = 920
     height = (
-        110
-        + 28
-        + len(industries) * 28
-        + 36
-        + 28
-        + len(rows) * 26
+        100
+        + top_block
         + 40
-        + max(1, len(ups)) * 26
-        + 36
-        + max(1, len(downs)) * 26
-        + 48
+        + 28
+        + len(industries) * 30
+        + 40
+        + 28
+        + pair_rows * 30
+        + 40
     )
-    img = Image.new("RGB", (width, height), (15, 23, 42))
+    img = Image.new("RGB", (width, height), (11, 18, 32))
     draw = ImageDraw.Draw(img)
+
+    # Outer frame
     draw.rounded_rectangle(
-        (18, 18, width - 18, height - 18),
-        radius=20,
-        fill=(20, 30, 48),
-        outline=(71, 85, 105),
+        (14, 14, width - 14, height - 14),
+        radius=24,
+        fill=(17, 27, 46),
+        outline=(56, 78, 110),
         width=2,
     )
+    # Left accent bar under title area
+    draw.rectangle((14, 14, 22, height - 14), fill=(56, 189, 248))
 
-    # Upper-left title only
-    draw.text((40, 36), "宋总特别关注", font=font_title, fill=(248, 250, 252))
-    draw.text((40, 78), title_date, font=font_sub, fill=(148, 163, 184))
+    # Upper-left brand title
+    draw.text((40, 30), "宋总特别关注", font=font_title, fill=(248, 250, 252))
+    draw.text((40, 78), title_date, font=font_sub, fill=(125, 145, 170))
 
-    y = 112
-    draw.text((40, y), "行业", font=font_small, fill=(148, 163, 184))
-    draw.text((250, y), "明日观点", font=font_small, fill=(148, 163, 184))
-    draw.text((400, y), "关键股", font=font_small, fill=(148, 163, 184))
-    draw.text((600, y), "关键股预期", font=font_small, fill=(148, 163, 184))
+    # ===== Top5 涨 / Top5 跌 side by side =====
+    y = 108
+    left_box = (36, y, 448, y + top_block)
+    right_box = (472, y, 884, y + top_block)
+    draw.rounded_rectangle(left_box, radius=16, fill=(16, 42, 36), outline=(34, 120, 90), width=2)
+    draw.rounded_rectangle(right_box, radius=16, fill=(48, 24, 34), outline=(140, 55, 75), width=2)
+    draw.text((52, y + 12), "Top5 涨", font=font_section, fill=(52, 211, 153))
+    draw.text((488, y + 12), "Top5 跌", font=font_section, fill=(251, 113, 133))
+
+    for i in range(max(len(ups), len(downs), 1)):
+        row_y = y + 46 + i * 34
+        if i < len(ups):
+            pred = float(ups[i]["pred_pct"])
+            draw.text((52, row_y), f"{i + 1}. {ups[i]['name']}", font=font_row, fill=(236, 253, 245))
+            draw.text((330, row_y), f"+{pred:.2f}%", font=font_pct, fill=_pct_color(pred))
+        if i < len(downs):
+            pred = float(downs[i]["pred_pct"])
+            draw.text((488, row_y), f"{i + 1}. {downs[i]['name']}", font=font_row, fill=(255, 241, 242))
+            draw.text((770, row_y), f"{pred:.2f}%", font=font_pct, fill=_pct_color(pred))
+
+    y = y + top_block + 28
+    draw.text((40, y), "行业", font=font_small, fill=(125, 145, 170))
+    draw.text((220, y), "观点", font=font_small, fill=(125, 145, 170))
+    draw.text((360, y), "关键股", font=font_small, fill=(125, 145, 170))
+    draw.text((620, y), "%", font=font_small, fill=(125, 145, 170))
     y += 22
-    draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
-    y += 8
+    draw.line((40, y, width - 40, y), fill=(45, 60, 85), width=1)
+    y += 10
 
     for ind in industries:
+        # subtle row chip
+        draw.rounded_rectangle((36, y - 4, width - 36, y + 24), radius=8, fill=(22, 34, 56))
         pred = ind.get("pred_pct")
-        draw.text((40, y), ind["industry"][:14], font=font_row, fill=(248, 250, 252))
+        draw.text((48, y), ind["industry"][:10], font=font_row, fill=(248, 250, 252))
         if pred is None:
-            draw.text((250, y), "暂无", font=font_row, fill=(148, 163, 184))
+            draw.text((220, y), "暂无", font=font_row, fill=(125, 145, 170))
         else:
-            draw.text((250, y), f"{pred:+.2f}%", font=font_row, fill=_pct_color(float(pred)))
-        draw.text((400, y), str(ind.get("key_name") or "-")[:10], font=font_row, fill=(226, 232, 240))
+            draw.text((220, y), f"{float(pred):+.2f}%", font=font_row, fill=_pct_color(float(pred)))
+        draw.text((360, y), str(ind.get("key_name") or "-")[:12], font=font_row, fill=(210, 220, 235))
         kp = ind.get("key_pred")
         if kp is None:
-            draw.text((600, y), "-", font=font_row, fill=(148, 163, 184))
+            draw.text((620, y), "-", font=font_row, fill=(125, 145, 170))
         else:
-            draw.text((600, y), f"{float(kp):+.2f}%", font=font_row, fill=_pct_color(float(kp)))
-        y += 26
+            draw.text((620, y), f"{float(kp):+.2f}%", font=font_pct, fill=_pct_color(float(kp)))
+        y += 30
 
-    y += 14
-    draw.text((40, y), "股票", font=font_small, fill=(148, 163, 184))
-    draw.text((260, y), "行业", font=font_small, fill=(148, 163, 184))
-    draw.text((560, y), "明日预期", font=font_small, fill=(148, 163, 184))
+    y += 16
+    draw.text((40, y), "全部", font=font_small, fill=(125, 145, 170))
     y += 22
-    draw.line((40, y, width - 40, y), fill=(51, 65, 85), width=1)
-    y += 8
-
-    for row in rows:
-        draw.text((40, y), row["name"][:10], font=font_row, fill=(248, 250, 252))
-        draw.text((260, y), str(row.get("industry") or "-")[:12], font=font_row, fill=(148, 163, 184))
-        if row.get("error"):
-            draw.text((560, y), "暂无", font=font_row, fill=(148, 163, 184))
-        else:
-            pred = float(row["pred_pct"])
-            sign = "+" if pred > 0 else ""
-            draw.text((560, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-        y += 24
-
-    y += 12
-    draw.text((40, y), "Top5 涨", font=font_section, fill=(52, 211, 153))
-    y += 28
-    if not ups:
-        draw.text((40, y), "-", font=font_row, fill=(148, 163, 184))
-        y += 24
-    for i, row in enumerate(ups, 1):
-        pred = float(row["pred_pct"])
-        draw.text((40, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
-        draw.text((320, y), f"+{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-        y += 24
-
+    draw.line((40, y, width - 40, y), fill=(45, 60, 85), width=1)
     y += 10
-    draw.text((40, y), "Top5 跌", font=font_section, fill=(251, 113, 133))
-    y += 28
-    if not downs:
-        draw.text((40, y), "-", font=font_row, fill=(148, 163, 184))
-        y += 24
-    for i, row in enumerate(downs, 1):
-        pred = float(row["pred_pct"])
-        draw.text((40, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
-        draw.text((320, y), f"{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-        y += 24
+
+    for i in range(0, len(valid), 2):
+        left = valid[i]
+        right = valid[i + 1] if i + 1 < len(valid) else None
+        draw.rounded_rectangle((36, y - 2, 448, y + 24), radius=8, fill=(22, 34, 56))
+        draw.rounded_rectangle((472, y - 2, 884, y + 24), radius=8, fill=(22, 34, 56))
+
+        def _draw_stock(x: int, row: Optional[Dict[str, Any]]) -> None:
+            if row is None:
+                return
+            draw.text((x, y), row["name"][:10], font=font_row, fill=(248, 250, 252))
+            if row.get("error"):
+                draw.text((x + 220, y), "暂无", font=font_row, fill=(125, 145, 170))
+            else:
+                pred = float(row["pred_pct"])
+                sign = "+" if pred > 0 else ""
+                draw.text((x + 220, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+
+        _draw_stock(48, left)
+        _draw_stock(484, right)
+        y += 30
 
     img.save(out_png, format="PNG")
     return out_png.is_file()
