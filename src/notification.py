@@ -1747,16 +1747,13 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # Focus card: stock names only, tomorrow expected % move, confidence, no codes/sources.
+        # Focus card: stock names only, tomorrow expected % move, no codes/sources.
         is_en = str(report_language).lower().startswith("en")
         horizon_label = "Tomorrow" if is_en else "明日"
         view_label = "View" if is_en else "观点"
-        conf_label = "Confidence" if is_en else "可信度"
-        overall_conf = self._format_overall_confidence(results, report_language)
         lines = [
             f"# {report_date} {labels['brief_title']}",
-            f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}"
-            + (f" · {conf_label} {overall_conf}" if overall_conf else ""),
+            f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
             "",
         ]
         self._append_market_status_line(lines, results, report_language)
@@ -1768,10 +1765,8 @@ class NotificationService(
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
             pred_pct = self._format_tomorrow_pct(r, report_language)
-            stock_conf = self._format_stock_confidence(r, report_language)
             lines.append(f"{emoji} **{name}**")
-            conf_part = f" · {conf_label}: {stock_conf}" if stock_conf else ""
-            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}{conf_part}")
+            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}")
             if one:
                 lines.append(f"  {view_label}: {one}")
             lines.append("")
