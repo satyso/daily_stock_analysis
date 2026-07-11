@@ -1747,8 +1747,11 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # Focus card: Mag7/HK daily push — short lines, trend + sources, minimal prose.
+        # SMART focus card: Specific / Measurable / Actionable / Relevant / Time-bound.
+        # Do not truncate/overwrite the one-sentence view; keep a full readable line.
         src_label = "源" if not str(report_language).lower().startswith("en") else "Src"
+        horizon_label = "周期" if not str(report_language).lower().startswith("en") else "Horizon"
+        view_label = "观点" if not str(report_language).lower().startswith("en") else "View"
         lines = [
             f"# {report_date} {labels['brief_title']}",
             f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
@@ -1761,16 +1764,18 @@ class NotificationService(
             dash = r.dashboard or {}
             core = dash.get('core_conclusion', {}) or {}
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
-            if len(one) > 24:
-                one = one[:24].rstrip() + "…"
             trend = localize_trend_prediction(getattr(r, "trend_prediction", None), report_language) or "—"
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
+            horizon = "1w" if str(report_language).lower().startswith("en") else "1周"
+            lines.append(f"{emoji} **{name}** `{r.code}`")
             lines.append(
-                f"{emoji} **{name}** `{r.code}` · {advice} · "
-                f"{labels['trend_label']} {trend} · {labels['score_label']} {r.sentiment_score}"
+                f"  {labels['advice_label']}: {advice} · "
+                f"{labels['trend_label']}: {trend} · "
+                f"{labels['score_label']}: {r.sentiment_score} · "
+                f"{horizon_label}: {horizon}"
             )
             if one:
-                lines.append(f"  {one}")
+                lines.append(f"  {view_label}: {one}")
             sources = self._format_focus_sources(r)
             if sources:
                 lines.append(f"  {src_label}: {sources}")

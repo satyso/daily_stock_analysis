@@ -726,11 +726,14 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
 
         self.assertIn("趋势", out)
         self.assertIn("看多", out)
+        self.assertIn("观点:", out)
+        self.assertIn("周期:", out)
         self.assertIn("源:", out)
         self.assertIn("yfinance", out)
         self.assertIn("tavily", out)
-        self.assertIn("…", out)
-        self.assertNotIn("仓位节奏控制细节", out)
+        # Do not overwrite/truncate the view sentence
+        self.assertIn("仓位节奏控制细节", out)
+        self.assertNotIn("…", out)
 
     @mock.patch("src.notification.get_config")
     def test_generate_dashboard_report_shows_model_by_default(self, mock_get_config: mock.MagicMock):
