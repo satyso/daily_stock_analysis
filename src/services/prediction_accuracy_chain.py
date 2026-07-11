@@ -39,6 +39,22 @@ def parse_stock_codes(raw: Optional[str] | Sequence[str]) -> List[str]:
     return list(dict.fromkeys(items))
 
 
+def resolve_stock_codes(
+    *,
+    stocks: Optional[str] | Sequence[str] = None,
+    watchlist: Optional[str] = None,
+) -> List[str]:
+    """Resolve explicit ``stocks`` or a named watchlist preset (not both empty)."""
+    codes = parse_stock_codes(stocks)
+    if codes:
+        return codes
+    if watchlist:
+        from src.services.watchlist_presets import load_watchlist_codes
+
+        return load_watchlist_codes(watchlist)
+    return []
+
+
 def parse_horizons(raw: Optional[str] | Sequence[str]) -> List[str]:
     """Parse horizon tokens; default to daily(1d) + weekly(5d)."""
     if raw is None or raw == "" or raw == []:
@@ -87,6 +103,7 @@ class PredictionAccuracyChain:
         self,
         *,
         stocks: Optional[str] | Sequence[str] = None,
+        watchlist: Optional[str] = None,
         horizons: Optional[str] | Sequence[str] = None,
         force: bool = False,
         limit_per_stock: int = 100,
@@ -94,7 +111,7 @@ class PredictionAccuracyChain:
         max_loops: int = 20,
     ) -> Dict[str, Any]:
         """Run DecisionSignal outcome evaluation for daily/weekly horizons."""
-        codes = parse_stock_codes(stocks)
+        codes = resolve_stock_codes(stocks=stocks, watchlist=watchlist)
         horizons_norm = parse_horizons(horizons)
         per_stock: List[Dict[str, Any]] = []
         totals = {"evaluated": 0, "created": 0, "updated": 0, "skipped": 0}
@@ -120,6 +137,7 @@ class PredictionAccuracyChain:
         return {
             "mode": "recalc",
             "stocks": codes,
+            "watchlist": watchlist,
             "horizons": horizons_norm,
             "force": bool(force),
             "engine_version": DECISION_SIGNAL_OUTCOME_ENGINE_VERSION,
@@ -171,16 +189,17 @@ class PredictionAccuracyChain:
     def predict(
         self,
         *,
-        stocks: str | Sequence[str],
+        stocks: Optional[str] | Sequence[str] = None,
+        watchlist: Optional[str] = None,
         research: bool = False,
         research_question: Optional[str] = None,
         full_report: bool = False,
         notify: bool = False,
     ) -> Dict[str, Any]:
         """Optional Deep Research, then run standard analysis (writes DecisionSignals)."""
-        codes = parse_stock_codes(stocks)
+        codes = resolve_stock_codes(stocks=stocks, watchlist=watchlist)
         if not codes:
-            raise ValueError("stocks is required for predict")
+            raise ValueError("stocks or --watchlist is required for predict")
 
         research_items: List[Dict[str, Any]] = []
         if research:
@@ -226,6 +245,7 @@ class PredictionAccuracyChain:
         return {
             "mode": "predict",
             "stocks": codes,
+            "watchlist": watchlist,
             "research_enabled": bool(research),
             "research_items": research_items,
             "analysis_items": analysis_items,
@@ -287,13 +307,14 @@ class PredictionAccuracyChain:
         self,
         *,
         stocks: Optional[str] | Sequence[str] = None,
+        watchlist: Optional[str] = None,
         window: str = "weekly",
     ) -> Dict[str, Any]:
         """Soft-fit latest analysis trend_prediction vs subsequent price move.
 
         Complements DecisionSignal outcomes for watch/hold (non-directional) rows.
         """
-        codes = parse_stock_codes(stocks)
+        codes = resolve_stock_codes(stocks=stocks, watchlist=watchlist)
         window_norm = str(window or "weekly").strip().lower()
         if window_norm in {"daily", "1d", "day"}:
             horizon_days = 1
@@ -365,6 +386,7 @@ class PredictionAccuracyChain:
             "window": window_label,
             "horizon_trading_days": horizon_days,
             "stocks": codes,
+            "watchlist": watchlist,
             "rows": rows,
             "soft_fit_hits": hits,
             "soft_fit_n": len(scored),

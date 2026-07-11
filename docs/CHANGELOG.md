@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [新功能] 新增主题自选预设 `config/watchlists/ai_focus.txt`（Mag7 / AI设备 / 存储 / CPU / 光通信 / 航天 / 港股龙头），可用 `scripts/apply_watchlist.py` 写入 `STOCK_LIST`，预测链路支持 `--watchlist`。
 - [新功能] 新增日/周预测准确率链路：`scripts/prediction_accuracy_chain.py` 支持 Auto Research 预测、DecisionSignal `1d/5d` 后验重算与 analysis_history 纸面软核对；`outcomes/stats` 支持按 `stock_code` 过滤。
 - [改进] GitHub Actions 每日分析工作流补齐 TickFlow 数据源环境变量映射，并收敛 README 数据源稳定性说明到完整指南。
 - [修复] WebUI 启动时显式 `--host` / `--port` 不再被 `.env` 中的 `WEBUI_HOST` / `WEBUI_PORT` 覆盖，未传 CLI 参数时统一使用解析后的运行时配置。

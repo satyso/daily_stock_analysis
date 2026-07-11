@@ -166,18 +166,25 @@ P5 通过 sidecar 表保存用户反馈和后验结果，不扩展 `decision_sig
 日常可复用 `scripts/prediction_accuracy_chain.py`，复用 DecisionSignal outcome，不另建平行准确率表：
 
 ```bash
+# 0) 把主题自选写入 .env STOCK_LIST（后续定时分析/飞书推送用这份）
+python scripts/apply_watchlist.py --name ai_focus
+
 # 1) 预测：可选 Auto Research（Deep ResearchAgent）后写分析与 DecisionSignal
+python scripts/prediction_accuracy_chain.py predict --watchlist ai_focus --notify
+# 或临时名单：
 python scripts/prediction_accuracy_chain.py predict --stocks ETHW,NVDA,DKNG --research
 
 # 2) 重算：显式评估 daily(1d) + weekly(5d)
-python scripts/prediction_accuracy_chain.py recalc --stocks ETHW,NVDA,DKNG --horizons 1d,5d
+python scripts/prediction_accuracy_chain.py recalc --watchlist ai_focus --horizons 1d,5d
 
 # 3) 纸面软核对：对 watch/hold 等非方向动作，用 analysis_history.trend_prediction 对照后续涨跌
-python scripts/prediction_accuracy_chain.py paper --stocks ETHW,NVDA,DKNG --window weekly
+python scripts/prediction_accuracy_chain.py paper --watchlist ai_focus --window weekly
 
 # 4) 仅 Auto Research（不写分析）
 python scripts/prediction_accuracy_chain.py research --stocks DKNG --research-question "周末到下周博弈与赔率"
 ```
+
+默认主题预设 `config/watchlists/ai_focus.txt` 覆盖：美股 Mag7、AI 算力/CPU、存储、半导体设备、老牌光通信、航天、AI 电力基建、半导体特气、港股龙头。可用 `python scripts/apply_watchlist.py --list` 查看。
 
 约定：`daily`/`1d` = 次日验证；`weekly`/`5d` = 约一周（5 个交易日）。新信号默认 horizon 仍多为 `3d`；`recalc --horizons 1d,5d` 会按请求 horizon 评估，不要求信号自身 horizon 等于 1d/5d。
 

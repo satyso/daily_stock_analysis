@@ -3,17 +3,18 @@
 """CLI for daily/weekly prediction accuracy chain + optional Auto Research.
 
 Examples:
-  # Analyze watchlist (writes DecisionSignals); enable Deep Research
-  python scripts/prediction_accuracy_chain.py predict \\
-    --stocks ETHW,NVDA,DKNG --research
+  # Use default AI-focus watchlist (Mag7 / semis / optical / space / HK leaders)
+  python scripts/apply_watchlist.py --name ai_focus
+  python scripts/prediction_accuracy_chain.py predict --watchlist ai_focus --notify
+
+  # Analyze explicit stocks with Auto Research
+  python scripts/prediction_accuracy_chain.py predict --stocks NVDA,AMD,LITE --research
 
   # Recalculate daily(1d) + weekly(5d) DecisionSignal outcomes
-  python scripts/prediction_accuracy_chain.py recalc \\
-    --stocks ETHW,NVDA,DKNG --horizons 1d,5d
+  python scripts/prediction_accuracy_chain.py recalc --watchlist ai_focus --horizons 1d,5d
 
-  # Paper soft-check from analysis_history (covers watch/hold trends)
-  python scripts/prediction_accuracy_chain.py paper \\
-    --stocks ETHW,NVDA,DKNG --window weekly
+  # Paper soft-check from analysis_history
+  python scripts/prediction_accuracy_chain.py paper --watchlist ai_focus --window weekly
 """
 
 from __future__ import annotations
@@ -33,6 +34,20 @@ from src.config import setup_env
 setup_env()
 
 
+def _add_stock_source_args(parser: argparse.ArgumentParser, *, stocks_required: bool = False) -> None:
+    parser.add_argument(
+        "--stocks",
+        required=stocks_required,
+        default=None,
+        help="Comma-separated stock codes (overrides --watchlist when both set)",
+    )
+    parser.add_argument(
+        "--watchlist",
+        default=None,
+        help="Named preset under config/watchlists/ (e.g. ai_focus)",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Daily/weekly prediction accuracy chain (DecisionSignal 1d/5d + Auto Research)",
@@ -40,7 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     predict = sub.add_parser("predict", help="Optional Auto Research, then analyze stocks")
-    predict.add_argument("--stocks", required=True, help="Comma-separated stock codes")
+    _add_stock_source_args(predict, stocks_required=False)
     predict.add_argument(
         "--research",
         action="store_true",
@@ -51,7 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--notify", action="store_true", help="Send notifications after analysis")
 
     recalc = sub.add_parser("recalc", help="Recalculate DecisionSignal outcomes for 1d/5d")
-    recalc.add_argument("--stocks", default=None, help="Optional stock filter; omit for all candidates")
+    _add_stock_source_args(recalc)
     recalc.add_argument(
         "--horizons",
         default="1d,5d",
@@ -66,7 +81,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     paper = sub.add_parser("paper", help="Paper soft-fit from analysis_history trends")
-    paper.add_argument("--stocks", default=None, help="Optional stock filter")
+    _add_stock_source_args(paper)
     paper.add_argument(
         "--window",
         default="weekly",
@@ -75,7 +90,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     research = sub.add_parser("research", help="Auto Research only (no analysis write)")
-    research.add_argument("--stocks", required=True, help="Comma-separated stock codes")
+    _add_stock_source_args(research, stocks_required=False)
     research.add_argument("--research-question", default=None, help="Optional research focus question")
 
     for p in (predict, recalc, paper, research):
@@ -97,7 +112,10 @@ def _print_result(payload: Dict[str, Any], *, as_json: bool) -> None:
         totals = payload.get("totals") or {}
         stats = payload.get("stats") or {}
         print("=== Prediction accuracy recalc ===")
-        print(f"stocks={payload.get('stocks') or '*'} horizons={payload.get('horizons')}")
+        print(
+            f"watchlist={payload.get('watchlist') or '-'} "
+            f"stocks={payload.get('stocks') or '*'} horizons={payload.get('horizons')}"
+        )
         print(
             "evaluated={evaluated} created={created} updated={updated} skipped={skipped}".format(
                 **{k: totals.get(k, 0) for k in ("evaluated", "created", "updated", "skipped")}
@@ -115,6 +133,7 @@ def _print_result(payload: Dict[str, Any], *, as_json: bool) -> None:
     if mode == "predict":
         print("=== Predict (+ optional Auto Research) ===")
         print(
+            f"watchlist={payload.get('watchlist') or '-'} "
             f"success={payload.get('success_count')} failed={payload.get('failed_count')} "
             f"research={payload.get('research_enabled')}"
         )
@@ -165,15 +184,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    from src.services.prediction_accuracy_chain import PredictionAccuracyChain
+    from src.services.prediction_accuracy_chain import PredictionAccuracyChain, resolve_stock_codes
 
     chain = PredictionAccuracyChain()
     as_json = bool(getattr(args, "json", False))
+    watchlist = getattr(args, "watchlist", None)
+    stocks = getattr(args, "stocks", None)
 
     try:
+        if args.command in {"predict", "research"} and not stocks and not watchlist:
+            parser.error(f"{args.command} requires --stocks or --watchlist")
+
         if args.command == "predict":
             payload = chain.predict(
-                stocks=args.stocks,
+                stocks=stocks,
+                watchlist=watchlist,
                 research=bool(args.research),
                 research_question=args.research_question,
                 full_report=bool(args.full_report),
@@ -181,29 +206,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
         elif args.command == "recalc":
             payload = chain.recalc(
-                stocks=args.stocks,
+                stocks=stocks,
+                watchlist=watchlist,
                 horizons=args.horizons,
                 force=bool(args.force),
                 limit_per_stock=int(args.limit),
                 loop_until_empty=not bool(args.no_loop),
             )
         elif args.command == "paper":
-            payload = chain.paper_check(stocks=args.stocks, window=args.window)
+            payload = chain.paper_check(stocks=stocks, watchlist=watchlist, window=args.window)
         elif args.command == "research":
-            from src.services.prediction_accuracy_chain import parse_stock_codes
-
+            codes = resolve_stock_codes(stocks=stocks, watchlist=watchlist)
             items = [
                 chain.run_auto_research(
                     stock_code=code,
                     question=args.research_question,
                 )
-                for code in parse_stock_codes(args.stocks)
+                for code in codes
             ]
-            payload = {"mode": "research", "items": items}
+            payload = {"mode": "research", "watchlist": watchlist, "stocks": codes, "items": items}
         else:  # pragma: no cover
             parser.error(f"unknown command: {args.command}")
             return 2
-    except ValueError as exc:
+    except (ValueError, FileNotFoundError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:
