@@ -722,6 +722,7 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
             model_used="gemini/gemini-2.5-flash",
         )
         result.predicted_change_pct = 1.35
+        result.direction_accuracy_pct = 58.0
 
         out = service.generate_brief_report([result], report_date="2026-07-11")
 
@@ -729,6 +730,8 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertNotIn("`NVDA`", out)
         self.assertIn("明日:", out)
         self.assertIn("+1.35%", out)
+        self.assertIn("准确率", out)
+        self.assertIn("58%", out)
         self.assertIn("观点:", out)
         self.assertIn("仓位节奏控制细节", out)
         self.assertNotIn("源:", out)

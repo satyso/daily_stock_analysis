@@ -91,11 +91,62 @@ def _predict_tomorrow_pct(closes: List[float]) -> Dict[str, float]:
     }
 
 
+def _direction_hit(pred_pct: float, actual_pct: float, *, flat_eps: float = 0.15) -> bool:
+    """Direction hit: same sign, or both near-flat."""
+    if abs(pred_pct) < flat_eps and abs(actual_pct) < flat_eps:
+        return True
+    if pred_pct == 0 or actual_pct == 0:
+        return abs(actual_pct) < flat_eps and abs(pred_pct) < flat_eps
+    return (pred_pct > 0 and actual_pct > 0) or (pred_pct < 0 and actual_pct < 0)
+
+
+def _walk_forward_accuracy(closes: List[float], *, window: int = 12) -> Dict[str, Any]:
+    """Backtest the same heuristic over recent sessions (direction accuracy)."""
+    if len(closes) < 8:
+        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足"}
+    end_i = len(closes) - 1
+    start_i = max(5, end_i - window)
+    hits = 0
+    samples = 0
+    for i in range(start_i, end_i):
+        pred = _predict_tomorrow_pct(closes[: i + 1])["pred_pct"]
+        prev = closes[i]
+        if not prev:
+            continue
+        actual = (closes[i + 1] / prev - 1.0) * 100.0
+        samples += 1
+        if _direction_hit(float(pred), float(actual)):
+            hits += 1
+    if samples <= 0:
+        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足"}
+    acc = round(100.0 * hits / samples, 1)
+    return {
+        "acc_pct": acc,
+        "hits": hits,
+        "samples": samples,
+        "acc_label": f"{acc:.0f}%({hits}/{samples})",
+    }
+
+
+def _overall_accuracy(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    hits = sum(int(r.get("hits") or 0) for r in rows if "pred_pct" in r)
+    samples = sum(int(r.get("samples") or 0) for r in rows if "pred_pct" in r)
+    if samples <= 0:
+        return {"acc_pct": None, "hits": 0, "samples": 0, "acc_label": "样本不足"}
+    acc = round(100.0 * hits / samples, 1)
+    return {
+        "acc_pct": acc,
+        "hits": hits,
+        "samples": samples,
+        "acc_label": f"{acc:.0f}%({hits}/{samples})",
+    }
+
+
 def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
     import yfinance as yf
 
     end = datetime.now(timezone.utc).date()
-    start = end - timedelta(days=25)
+    start = end - timedelta(days=60)
     rows: List[Dict[str, Any]] = []
     for code in codes:
         name = NAME_MAP.get(code, code)
@@ -107,6 +158,7 @@ def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
                 rows.append({"name": name, "error": "数据不足"})
                 continue
             pred = _predict_tomorrow_pct(closes)
+            acc = _walk_forward_accuracy(closes)
             last = closes[-1]
             prev = closes[-2]
             today_pct = round((last / prev - 1.0) * 100.0, 2) if prev else None
@@ -116,6 +168,7 @@ def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
                 "last": round(last, 4),
                 "today_pct": today_pct,
                 **pred,
+                **acc,
             })
         except Exception as exc:
             rows.append({"name": name, "error": str(exc)})
@@ -123,24 +176,25 @@ def build_rows(codes: Sequence[str]) -> List[Dict[str, Any]]:
 
 
 def format_card_markdown(rows: List[Dict[str, Any]], *, title_date: str) -> str:
+    overall = _overall_accuracy(rows)
     lines = [
         f"# 特别关注 · 明日预测",
-        f"{title_date}",
+        f"{title_date} · 近端方向准确率 {overall['acc_label']}",
         "",
-        "| 股票 | 明日预期 | 区间 |",
-        "|---|---:|---:|",
+        "| 股票 | 明日预期 | 区间 | 准确率 |",
+        "|---|---:|---:|---:|",
     ]
     for row in rows:
         name = row["name"]
         if row.get("error"):
-            lines.append(f"| {name} | 暂无 | — |")
+            lines.append(f"| {name} | 暂无 | — | — |")
             continue
         pred = row["pred_pct"]
         sign = "+" if pred > 0 else ""
         low = row["low_pct"]
         high = row["high_pct"]
         lines.append(
-            f"| {name} | {sign}{pred:.2f}% | {low:+.2f}% ~ {high:+.2f}% |"
+            f"| {name} | {sign}{pred:.2f}% | {low:+.2f}% ~ {high:+.2f}% | {row.get('acc_label', '—')} |"
         )
     lines += [
         "",
@@ -154,20 +208,27 @@ def format_card_markdown(rows: List[Dict[str, Any]], *, title_date: str) -> str:
     for i, row in enumerate(scored, 1):
         pred = row["pred_pct"]
         sign = "+" if pred > 0 else ""
-        lines.append(f"{i}. **{row['name']}**  明日 {sign}{pred:.2f}%（{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%）")
+        lines.append(
+            f"{i}. **{row['name']}**  明日 {sign}{pred:.2f}% "
+            f"（{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%）· 准确率 {row.get('acc_label', '—')}"
+        )
     lines += [
         "",
-        "说明：明日涨跌幅为近端收益收缩估计，供决策参考，不构成投资建议。",
+        "说明：明日涨跌幅为近端收益收缩估计；准确率为同法近12个交易日方向命中率，供决策参考，不构成投资建议。",
     ]
     return "\n".join(lines) + "\n"
 
 
 def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
+    overall = _overall_accuracy(rows)
     body_rows = []
     for row in rows:
         name = html.escape(row["name"])
         if row.get("error"):
-            body_rows.append(f"<tr><td>{name}</td><td class='muted'>暂无</td><td class='muted'>—</td></tr>")
+            body_rows.append(
+                f"<tr><td>{name}</td><td class='muted'>暂无</td>"
+                f"<td class='muted'>—</td><td class='muted'>—</td></tr>"
+            )
             continue
         pred = float(row["pred_pct"])
         cls = "up" if pred > 0 else ("down" if pred < 0 else "flat")
@@ -177,6 +238,7 @@ def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
             f"<td class='name'>{name}</td>"
             f"<td class='{cls}'>{sign}{pred:.2f}%</td>"
             f"<td class='range'>{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%</td>"
+            f"<td class='acc'>{html.escape(str(row.get('acc_label') or '—'))}</td>"
             "</tr>"
         )
     top = sorted([r for r in rows if "pred_pct" in r], key=lambda r: abs(float(r["pred_pct"])), reverse=True)[:5]
@@ -187,14 +249,15 @@ def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
         sign = "+" if pred > 0 else ""
         top_html.append(
             f"<li><span class='name'>{html.escape(row['name'])}</span> "
-            f"<span class='{cls}'>{sign}{pred:.2f}%</span></li>"
+            f"<span class='{cls}'>{sign}{pred:.2f}%</span> "
+            f"<span class='acc'>{html.escape(str(row.get('acc_label') or '—'))}</span></li>"
         )
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"/>
 <style>
   body {{ margin:0; font-family: "PingFang SC","Noto Sans CJK SC","Segoe UI",sans-serif;
          background: linear-gradient(160deg,#0f172a 0%,#1e293b 55%,#0b1220 100%); color:#e2e8f0; }}
-  .card {{ width: 680px; margin: 24px auto; padding: 28px 28px 22px;
+  .card {{ width: 720px; margin: 24px auto; padding: 28px 28px 22px;
            background: rgba(15,23,42,.92); border: 1px solid rgba(148,163,184,.25);
            border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,.35); }}
   h1 {{ margin:0 0 6px; font-size: 28px; letter-spacing: .02em; }}
@@ -206,7 +269,7 @@ def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
   .up {{ color:#34d399; font-weight:700; }}
   .down {{ color:#fb7185; font-weight:700; }}
   .flat {{ color:#e2e8f0; font-weight:700; }}
-  .range,.muted {{ color:#94a3b8; }}
+  .range,.muted,.acc {{ color:#94a3b8; }}
   h2 {{ margin: 22px 0 10px; font-size: 18px; }}
   ol {{ margin:0; padding-left: 22px; }}
   li {{ margin: 6px 0; }}
@@ -214,16 +277,16 @@ def format_card_html(rows: List[Dict[str, Any]], *, title_date: str) -> str:
 </style></head><body>
 <div class="card">
   <h1>特别关注 · 明日预测</h1>
-  <div class="sub">{html.escape(title_date)}</div>
+  <div class="sub">{html.escape(title_date)} · 近端方向准确率 {html.escape(overall['acc_label'])}</div>
   <table>
-    <thead><tr><th>股票</th><th>明日预期</th><th>区间</th></tr></thead>
+    <thead><tr><th>股票</th><th>明日预期</th><th>区间</th><th>准确率</th></tr></thead>
     <tbody>
       {''.join(body_rows)}
     </tbody>
   </table>
   <h2>Top 5</h2>
   <ol>{''.join(top_html)}</ol>
-  <div class="note">明日涨跌幅为近端收益收缩估计，仅供参考，不构成投资建议。</div>
+  <div class="note">明日涨跌幅为近端收益收缩估计；准确率为同法近12个交易日方向命中率，仅供参考，不构成投资建议。</div>
 </div>
 </body></html>
 """
@@ -240,14 +303,15 @@ def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_p
     try:
         font_title = ImageFont.truetype(font_path, 34)
         font_sub = ImageFont.truetype(font_path, 18)
-        font_row = ImageFont.truetype(font_path, 22)
-        font_small = ImageFont.truetype(font_path, 16)
+        font_row = ImageFont.truetype(font_path, 20)
+        font_small = ImageFont.truetype(font_path, 15)
     except OSError:
         font_title = font_sub = font_row = font_small = ImageFont.load_default()
 
-    width = 720
+    width = 760
+    overall = _overall_accuracy(rows)
     top5 = sorted([r for r in rows if "pred_pct" in r], key=lambda r: abs(float(r["pred_pct"])), reverse=True)[:5]
-    height = 160 + len(rows) * 42 + 40 + len(top5) * 34 + 90
+    height = 170 + len(rows) * 40 + 40 + len(top5) * 32 + 100
     img = Image.new("RGB", (width, height), (15, 23, 42))
     draw = ImageDraw.Draw(img)
 
@@ -259,12 +323,18 @@ def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_p
         width=2,
     )
     draw.text((48, 44), "特别关注 · 明日预测", font=font_title, fill=(248, 250, 252))
-    draw.text((48, 90), title_date, font=font_sub, fill=(148, 163, 184))
+    draw.text(
+        (48, 90),
+        f"{title_date} · 近端方向准确率 {overall['acc_label']}",
+        font=font_sub,
+        fill=(148, 163, 184),
+    )
 
     y = 130
     draw.text((48, y), "股票", font=font_small, fill=(148, 163, 184))
-    draw.text((320, y), "明日预期", font=font_small, fill=(148, 163, 184))
-    draw.text((470, y), "区间", font=font_small, fill=(148, 163, 184))
+    draw.text((280, y), "明日预期", font=font_small, fill=(148, 163, 184))
+    draw.text((420, y), "区间", font=font_small, fill=(148, 163, 184))
+    draw.text((600, y), "准确率", font=font_small, fill=(148, 163, 184))
     y += 28
     draw.line((48, y, width - 48, y), fill=(51, 65, 85), width=1)
     y += 12
@@ -273,36 +343,38 @@ def render_png_with_pillow(rows: List[Dict[str, Any]], *, title_date: str, out_p
         name = row["name"]
         if row.get("error"):
             draw.text((48, y), name, font=font_row, fill=(248, 250, 252))
-            draw.text((320, y), "暂无", font=font_row, fill=(148, 163, 184))
-            y += 40
+            draw.text((280, y), "暂无", font=font_row, fill=(148, 163, 184))
+            y += 38
             continue
         pred = float(row["pred_pct"])
         color = (52, 211, 153) if pred > 0 else ((251, 113, 133) if pred < 0 else (226, 232, 240))
         sign = "+" if pred > 0 else ""
         draw.text((48, y), name, font=font_row, fill=(248, 250, 252))
-        draw.text((320, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
+        draw.text((280, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
         draw.text(
-            (470, y),
+            (420, y),
             f"{row['low_pct']:+.2f}% ~ {row['high_pct']:+.2f}%",
             font=font_row,
             fill=(148, 163, 184),
         )
-        y += 40
+        draw.text((600, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+        y += 38
 
-    y += 10
+    y += 8
     draw.text((48, y), "Top 5", font=font_sub, fill=(226, 232, 240))
-    y += 30
+    y += 28
     for i, row in enumerate(top5, 1):
         pred = float(row["pred_pct"])
         color = (52, 211, 153) if pred > 0 else ((251, 113, 133) if pred < 0 else (226, 232, 240))
         sign = "+" if pred > 0 else ""
         draw.text((48, y), f"{i}. {row['name']}", font=font_row, fill=(248, 250, 252))
-        draw.text((420, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
-        y += 34
+        draw.text((360, y), f"{sign}{pred:.2f}%", font=font_row, fill=color)
+        draw.text((500, y), str(row.get("acc_label") or "—"), font=font_row, fill=(148, 163, 184))
+        y += 32
 
     draw.text(
-        (48, height - 58),
-        "明日涨跌幅为近端收益收缩估计，仅供参考，不构成投资建议。",
+        (48, height - 70),
+        "准确率=同法近12个交易日方向命中；明日%为近端收益收缩估计，仅供参考。",
         font=font_small,
         fill=(100, 116, 139),
     )
@@ -321,6 +393,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     codes = load_watchlist_codes(args.watchlist)
     rows = build_rows(codes)
+    overall = _overall_accuracy(rows)
     today = datetime.now().strftime("%Y-%m-%d")
     md = format_card_markdown(rows, title_date=today)
     html_text = format_card_html(rows, title_date=today)
@@ -335,7 +408,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     md_path.write_text(md, encoding="utf-8")
     html_path.write_text(html_text, encoding="utf-8")
     json_path.write_text(
-        json.dumps({"date": today, "watchlist": args.watchlist, "rows": rows}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "date": today,
+                "watchlist": args.watchlist,
+                "overall_accuracy": overall,
+                "rows": rows,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     ok = render_png_with_pillow(rows, title_date=today, out_png=png_path)
@@ -347,6 +429,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "json": str(json_path),
         "image_ok": ok,
         "count": len(rows),
+        "overall_accuracy": overall,
     }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

@@ -1747,12 +1747,16 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # Focus card: stock names only, tomorrow expected % move, no codes/sources.
-        horizon_label = "明日" if not str(report_language).lower().startswith("en") else "Tomorrow"
-        view_label = "观点" if not str(report_language).lower().startswith("en") else "View"
+        # Focus card: stock names only, tomorrow expected % move, accuracy, no codes/sources.
+        is_en = str(report_language).lower().startswith("en")
+        horizon_label = "Tomorrow" if is_en else "明日"
+        view_label = "View" if is_en else "观点"
+        acc_label = "Accuracy" if is_en else "准确率"
+        overall_acc = self._format_overall_accuracy(results, report_language)
         lines = [
             f"# {report_date} {labels['brief_title']}",
-            f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
+            f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}"
+            + (f" · {acc_label} {overall_acc}" if overall_acc else ""),
             "",
         ]
         self._append_market_status_line(lines, results, report_language)
@@ -1764,8 +1768,10 @@ class NotificationService(
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
             pred_pct = self._format_tomorrow_pct(r, report_language)
+            stock_acc = self._format_stock_accuracy(r, report_language)
             lines.append(f"{emoji} **{name}**")
-            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}")
+            acc_part = f" · {acc_label}: {stock_acc}" if stock_acc else ""
+            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}{acc_part}")
             if one:
                 lines.append(f"  {view_label}: {one}")
             lines.append("")
@@ -1800,6 +1806,42 @@ class NotificationService(
             if any(k.lower() in lower or k in trend for k in keys):
                 return label
         return "0.00%"
+
+    def _extract_accuracy_pct(self, result: AnalysisResult) -> Optional[float]:
+        """Read direction accuracy percent from result fields / dashboard if present."""
+        dash = getattr(result, "dashboard", None) or {}
+        candidates = [
+            getattr(result, "direction_accuracy_pct", None),
+            getattr(result, "prediction_accuracy_pct", None),
+            getattr(result, "accuracy_pct", None),
+            dash.get("direction_accuracy_pct") if isinstance(dash, dict) else None,
+            dash.get("prediction_accuracy_pct") if isinstance(dash, dict) else None,
+            dash.get("accuracy_pct") if isinstance(dash, dict) else None,
+        ]
+        for raw in candidates:
+            try:
+                if raw is None or str(raw).strip() == "":
+                    continue
+                value = float(raw)
+                # accept 0-1 ratio or 0-100 percent
+                if 0.0 <= value <= 1.0:
+                    value *= 100.0
+                return value
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _format_stock_accuracy(self, result: AnalysisResult, report_language: str) -> str:
+        value = self._extract_accuracy_pct(result)
+        if value is None:
+            return ""
+        return f"{value:.0f}%"
+
+    def _format_overall_accuracy(self, results: List[AnalysisResult], report_language: str) -> str:
+        values = [v for v in (self._extract_accuracy_pct(r) for r in results) if v is not None]
+        if not values:
+            return ""
+        return f"{(sum(values) / len(values)):.0f}%"
 
     def _format_focus_sources(self, result: AnalysisResult) -> str:
         """Compact information-source line for focus/brief cards."""
