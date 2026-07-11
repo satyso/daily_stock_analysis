@@ -1,0 +1,18 @@
+# US focus: Mag7 + module tops (CPU / memory / optical / space)
+# Only US. No A-shares. No HK.
+# Daily: scripts/prediction_accuracy_chain.py daily --watchlist us_ai_focus
+
+# Mag7
+AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
+
+# CPU
+AMD, AVGO
+
+# Memory
+MU
+
+# Optical (light)
+LITE
+
+# Space
+RKLB

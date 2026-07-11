@@ -678,13 +678,13 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         with mock.patch.object(service, "generate_dashboard_report", return_value="dashboard") as mock_dashboard, mock.patch.object(
             service, "generate_brief_report", return_value="brief"
         ) as mock_brief:
-            self.assertEqual(service.generate_aggregate_report([result], "simple"), "dashboard")
+            self.assertEqual(service.generate_aggregate_report([result], "simple"), "brief")
             self.assertEqual(service.generate_aggregate_report([result], "full"), "dashboard")
             self.assertEqual(service.generate_aggregate_report([result], "detailed"), "dashboard")
             self.assertEqual(service.generate_aggregate_report([result], "brief"), "brief")
 
-        self.assertEqual(mock_dashboard.call_count, 3)
-        mock_brief.assert_called_once()
+        self.assertEqual(mock_dashboard.call_count, 2)
+        self.assertEqual(mock_brief.call_count, 2)
 
     @mock.patch("src.notification.get_config")
     def test_generate_single_stock_report_keeps_legacy_simple_format(self, mock_get_config: mock.MagicMock):
@@ -707,22 +707,33 @@ class TestNotificationServiceReportGeneration(unittest.TestCase):
         self.assertIn("600519", out)
 
     @mock.patch("src.notification.get_config")
-    def test_generate_brief_report_shows_model_by_default(self, mock_get_config: mock.MagicMock):
+    def test_generate_brief_report_shows_trend_and_sources(self, mock_get_config: mock.MagicMock):
         mock_get_config.return_value = _make_config(report_renderer_enabled=False)
         service = NotificationService()
         result = AnalysisResult(
-            code="600519",
-            name="贵州茅台",
-            sentiment_score=72,
+            code="NVDA",
+            name="NVIDIA",
+            sentiment_score=80,
             trend_prediction="看多",
-            operation_advice="持有",
-            analysis_summary="稳健",
+            operation_advice="买入",
+            analysis_summary="算力需求延续且供应链仍紧，关注回调买点与仓位节奏控制细节",
+            data_sources="yfinance, tavily, longbridge",
+            search_performed=True,
             model_used="gemini/gemini-2.5-flash",
         )
 
-        out = service.generate_brief_report([result], report_date="2026-02-01")
+        out = service.generate_brief_report([result], report_date="2026-07-11")
 
-        self.assertIn("*分析模型: gemini/gemini-2.5-flash*", out)
+        self.assertIn("趋势", out)
+        self.assertIn("看多", out)
+        self.assertIn("观点:", out)
+        self.assertIn("周期:", out)
+        self.assertIn("源:", out)
+        self.assertIn("yfinance", out)
+        self.assertIn("tavily", out)
+        # Do not overwrite/truncate the view sentence
+        self.assertIn("仓位节奏控制细节", out)
+        self.assertNotIn("…", out)
 
     @mock.patch("src.notification.get_config")
     def test_generate_dashboard_report_shows_model_by_default(self, mock_get_config: mock.MagicMock):

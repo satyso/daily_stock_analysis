@@ -1226,7 +1226,7 @@ New API endpoints:
 - `GET /api/v1/decision-signals`: paginated query with `market`, `stock_code`, `action`, `market_phase`, `source_type`, `source_report_id`, `trace_id`, `trigger_source`, `status`, time ranges, `holding_only`, and `account_id`.
 - `POST /api/v1/decision-signals/outcomes/run`: explicitly trigger signal-level outcome evaluation; by default it skips completed and terminal unable rows, recomputes recoverable unable rows, and `force=true` recomputes and overwrites the current key.
 - `GET /api/v1/decision-signals/outcomes`: paginated query for signal outcome rows.
-- `GET /api/v1/decision-signals/outcomes/stats`: aggregate current outcome-engine stats; by default it excludes archived signals.
+- `GET /api/v1/decision-signals/outcomes/stats`: aggregate current outcome-engine stats; by default it excludes archived signals. Optional `stock_code` filters stats to one symbol.
 - `GET /api/v1/decision-signals/{signal_id}/outcomes`: list the selected signal's outcome rows for the current outcome engine.
 - `GET /api/v1/decision-signals/{signal_id}/feedback`: fetch the selected signal's user feedback; missing feedback returns `feedback_value=null`.
 - `PUT /api/v1/decision-signals/{signal_id}/feedback`: upsert the selected signal's latest `useful|not_useful` feedback.
@@ -1364,7 +1364,7 @@ For this feature, the product behavior is:
 | `/api/v1/decision-signals` | GET | Paginated decision-signal query with stock, market, action, phase, source, status, time-range, and cache-only holdings filters |
 | `/api/v1/decision-signals/outcomes/run` | POST | Explicitly trigger signal outcome evaluation; by default skips completed/terminal unable rows, recomputes recoverable unable rows, and `force=true` recomputes |
 | `/api/v1/decision-signals/outcomes` | GET | Paginated signal outcome query |
-| `/api/v1/decision-signals/outcomes/stats` | GET | Query current outcome-engine stats; archived signals are excluded by default |
+| `/api/v1/decision-signals/outcomes/stats` | GET | Query current outcome-engine stats; archived signals are excluded by default; optional `stock_code` filter |
 | `/api/v1/decision-signals/{signal_id}/outcomes` | GET | Query one signal's outcomes under the current outcome engine |
 | `/api/v1/decision-signals/{signal_id}/feedback` | GET | Query one signal's user feedback; missing feedback returns `feedback_value=null` |
 | `/api/v1/decision-signals/{signal_id}/feedback` | PUT | Upsert one signal's `useful|not_useful` feedback |

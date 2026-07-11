@@ -302,6 +302,9 @@ class DecisionSignalOutcomeService:
         horizons: Optional[List[str]] = None,
         engine_version: Optional[str] = None,
         statuses: Optional[List[str]] = None,
+        stock_code: Optional[str] = None,
+        stock_codes: Optional[List[str]] = None,
+        market: Optional[str] = None,
     ) -> Dict[str, Any]:
         engine_version_norm = str(engine_version or DECISION_SIGNAL_OUTCOME_ENGINE_VERSION).strip()
         horizons_norm = self._normalize_horizons(horizons)
@@ -310,10 +313,23 @@ class DecisionSignalOutcomeService:
             if statuses
             else list(DEFAULT_STATS_STATUSES)
         )
+        market_norm = DecisionSignalService._normalize_optional_market(market)
+        codes: List[str] = []
+        if stock_codes:
+            for raw in stock_codes:
+                codes.extend(
+                    DecisionSignalService._stock_filter_codes(raw, market=market_norm) or []
+                )
+        if stock_code:
+            codes.extend(
+                DecisionSignalService._stock_filter_codes(stock_code, market=market_norm) or []
+            )
+        stock_codes_norm = list(dict.fromkeys(codes)) or None
         rows = self.repo.list_stats_rows(
             engine_version=engine_version_norm,
             horizons=horizons_norm,
             statuses=statuses_norm,
+            stock_codes=stock_codes_norm,
         )
         dimensions = (
             "action",
@@ -334,6 +350,7 @@ class DecisionSignalOutcomeService:
             "engine_version": engine_version_norm,
             "horizons": horizons_norm,
             "statuses": statuses_norm,
+            "stock_codes": stock_codes_norm,
             "breakdowns": breakdowns,
         }
 

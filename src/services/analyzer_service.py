@@ -27,6 +27,7 @@ def analyze_stock(
     config: Config = None,
     full_report: bool = False,
     notifier: Optional[NotificationService] = None,
+    report_type: Optional[ReportType] = None,
 ) -> Optional[AnalysisResult]:
     """
     分析单只股票
@@ -36,6 +37,7 @@ def analyze_stock(
         config: 配置对象（可选，默认使用单例）
         full_report: 是否生成完整报告
         notifier: 通知服务（可选）
+        report_type: 显式报告类型；默认 full_report→FULL，否则 SIMPLE（focus 卡片）
 
     Returns:
         分析结果对象
@@ -54,8 +56,9 @@ def analyze_stock(
     if notifier:
         pipeline.notifier = notifier
 
-    # 根据full_report参数设置报告类型
-    report_type = ReportType.FULL if full_report else ReportType.SIMPLE
+    # 根据参数设置报告类型（focus 日更默认 SIMPLE → brief 卡片）
+    if report_type is None:
+        report_type = ReportType.FULL if full_report else ReportType.SIMPLE
 
     # 运行单只股票分析
     result = pipeline.process_single_stock(

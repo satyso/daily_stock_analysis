@@ -1,0 +1,8 @@
+# Combined = US ∪ HK (no A-shares). Prefer us_ai_focus / hk_ai_focus separately.
+
+# US Mag7 + CPU/memory/optical/space tops
+AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA
+AMD, AVGO, MU, LITE, RKLB
+
+# HK internet + innovation
+hk00700, hk09988, hk03690, hk01810, hk09888, hk00020

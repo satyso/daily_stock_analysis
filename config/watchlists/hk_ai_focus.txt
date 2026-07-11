@@ -1,0 +1,9 @@
+# HK focus: internet + innovation (港股专项)
+# Only HK. Separate from US. No A-shares.
+# Daily: scripts/prediction_accuracy_chain.py daily --watchlist hk_ai_focus
+
+# Internet
+hk00700, hk09988, hk03690, hk01810
+
+# Innovation / AI
+hk09888, hk00020

@@ -334,7 +334,8 @@ class NotificationService(
     ) -> str:
         """Generate the aggregate report content used by merge/save/push paths."""
         normalized_type = self._normalize_report_type(report_type)
-        if normalized_type == ReportType.BRIEF:
+        if normalized_type in (ReportType.BRIEF, ReportType.SIMPLE):
+            # simple/brief → concise focus card (trend + sources)
             return self.generate_brief_report(results, report_date=report_date)
         return self.generate_dashboard_report(results, report_date=report_date)
 
@@ -1746,10 +1747,15 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
+        # SMART focus card: Specific / Measurable / Actionable / Relevant / Time-bound.
+        # Do not truncate/overwrite the one-sentence view; keep a full readable line.
+        src_label = "源" if not str(report_language).lower().startswith("en") else "Src"
+        horizon_label = "周期" if not str(report_language).lower().startswith("en") else "Horizon"
+        view_label = "观点" if not str(report_language).lower().startswith("en") else "View"
         lines = [
             f"# {report_date} {labels['brief_title']}",
+            f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
             "",
-            f"> {len(results)} {labels['stock_unit_compact']} | 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
         ]
         self._append_market_status_line(lines, results, report_language)
         for r in sorted_results:
@@ -1757,18 +1763,47 @@ class NotificationService(
             name = self._get_display_name(r, report_language)
             dash = r.dashboard or {}
             core = dash.get('core_conclusion', {}) or {}
-            one = (core.get('one_sentence') or r.analysis_summary or '')[:60]
+            one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
+            trend = localize_trend_prediction(getattr(r, "trend_prediction", None), report_language) or "—"
+            advice = localize_operation_advice(r.operation_advice, report_language) or "—"
+            horizon = "1w" if str(report_language).lower().startswith("en") else "1周"
+            lines.append(f"{emoji} **{name}** `{r.code}`")
             lines.append(
-                f"**{name}({r.code})** {emoji} "
-                f"{localize_operation_advice(r.operation_advice, report_language)} | "
-                f"{labels['score_label']} {r.sentiment_score} | {one}"
+                f"  {labels['advice_label']}: {advice} · "
+                f"{labels['trend_label']}: {trend} · "
+                f"{labels['score_label']}: {r.sentiment_score} · "
+                f"{horizon_label}: {horizon}"
             )
-        lines.append("")
-        lines.append(f"*{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+            if one:
+                lines.append(f"  {view_label}: {one}")
+            sources = self._format_focus_sources(r)
+            if sources:
+                lines.append(f"  {src_label}: {sources}")
+            lines.append("")
         models = self._collect_models_used(results)
+        footer = datetime.now().strftime('%Y-%m-%d %H:%M')
         if models:
-            lines.append(f"*{labels['analysis_model_label']}: {', '.join(models)}*")
+            lines.append(f"*{footer} · {labels['analysis_model_label']}: {', '.join(models)}*")
+        else:
+            lines.append(f"*{footer}*")
         return "\n".join(lines)
+
+    def _format_focus_sources(self, result: AnalysisResult) -> str:
+        """Compact information-source line for focus/brief cards."""
+        parts: List[str] = []
+        raw = getattr(result, "data_sources", None)
+        if isinstance(raw, (list, tuple)):
+            text = ", ".join(str(item).strip() for item in raw if str(item).strip())
+        else:
+            text = str(raw or "").strip()
+        if text:
+            # keep short: first 2-3 tokens
+            tokens = [tok.strip() for tok in text.replace("；", ",").replace(";", ",").split(",") if tok.strip()]
+            parts.extend(tokens[:3])
+        if getattr(result, "search_performed", False) and "web" not in " ".join(parts).lower():
+            parts.append("web")
+        # de-dupe preserve order
+        return ", ".join(dict.fromkeys(parts))
 
     def generate_single_stock_report(self, result: AnalysisResult) -> str:
         """

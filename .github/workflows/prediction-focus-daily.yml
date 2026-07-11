@@ -1,0 +1,98 @@
+name: Focus prediction daily
+
+# Opt-in Mag7/HK focus loop: accuracy recalc → Auto Research → trend push → paper check.
+# Enable with repository variable PREDICTION_FOCUS_DAILY_ENABLED=true
+
+on:
+  schedule:
+    - cron: '30 11 * * 1-5'  # UTC 11:30 ≈ 北京 19:30（美股盘前/港股收盘后）
+  workflow_dispatch:
+    inputs:
+      watchlist:
+        description: 'Watchlist preset(s)'
+        required: false
+        default: 'special_attention'
+      notify:
+        description: 'Push focus cards'
+        required: false
+        default: true
+        type: boolean
+      research:
+        description: 'Run Auto Research'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: prediction-focus-daily
+  cancel-in-progress: false
+
+jobs:
+  focus-daily:
+    if: ${{ vars.PREDICTION_FOCUS_DAILY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: STOCK_LIST
+    timeout-minutes: ${{ fromJSON(vars.ANALYSIS_TIMEOUT_MINUTES || '90') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Apply focus watchlist to env STOCK_LIST
+        env:
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'special_attention' }}
+        run: |
+          python scripts/apply_watchlist.py --name "$WATCHLIST"
+
+      - name: Run daily focus chain
+        env:
+          # Reuse the same secret/var surface as 00-daily-analysis where possible.
+          GENERATION_BACKEND: ${{ vars.GENERATION_BACKEND || secrets.GENERATION_BACKEND }}
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}
+          LITELLM_MODEL: ${{ vars.LITELLM_MODEL || secrets.LITELLM_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEYS: ${{ secrets.OPENAI_API_KEYS }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || secrets.OPENAI_MODEL }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          LONGBRIDGE_APP_KEY: ${{ secrets.LONGBRIDGE_APP_KEY }}
+          LONGBRIDGE_APP_SECRET: ${{ secrets.LONGBRIDGE_APP_SECRET }}
+          LONGBRIDGE_ACCESS_TOKEN: ${{ secrets.LONGBRIDGE_ACCESS_TOKEN }}
+          ANSPIRE_API_KEYS: ${{ secrets.ANSPIRE_API_KEYS }}
+          TAVILY_API_KEYS: ${{ secrets.TAVILY_API_KEYS }}
+          BOCHA_API_KEYS: ${{ secrets.BOCHA_API_KEYS }}
+          SERPAPI_API_KEYS: ${{ secrets.SERPAPI_API_KEYS }}
+          BRAVE_API_KEYS: ${{ secrets.BRAVE_API_KEYS }}
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REPORT_TYPE: simple
+          REPORT_LANGUAGE: ${{ vars.REPORT_LANGUAGE || secrets.REPORT_LANGUAGE || 'zh' }}
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'special_attention' }}
+          DO_NOTIFY: ${{ github.event.inputs.notify || 'true' }}
+          DO_RESEARCH: ${{ github.event.inputs.research || 'true' }}
+        run: |
+          set -euo pipefail
+          ARGS=(daily --watchlist "$WATCHLIST")
+          if [ "$DO_RESEARCH" != "true" ]; then
+            ARGS+=(--no-research)
+          fi
+          if [ "$DO_NOTIFY" != "true" ]; then
+            ARGS+=(--no-notify)
+          fi
+          python scripts/prediction_accuracy_chain.py "${ARGS[@]}"

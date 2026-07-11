@@ -1,0 +1,6 @@
+# User screenshot「特别关注」— personal special attention card
+# Source: mobile screenshot from prediction-accuracy agent (2026-07-11)
+# Daily default for: scripts/prediction_accuracy_chain.py daily
+# Mixed markets by design (includes KR 000660 and A-share 688268 from screenshot).
+
+000660, 688268, NVDA, SNDK, ETHW, LITE, AMD, GEV, GLL, DKNG, CONL

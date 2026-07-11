@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [改进] 精简推送卡改为 SMART 字段（建议/趋势/评分/周期/观点/信息源），观点原文不再截断覆盖。
+- [改进] 日更默认改为截图「特别关注」预设 `special_attention`（11 只），并保留 Mag7/港股主题名单；`daily` 闭环与可选 Actions 默认跟此名单。
+- [改进] 美股/港股 focus 名单收敛为 Mag7 + CPU/存储/光/航天龙头与港股互联网+创新；`daily` 闭环支持准确率复算、Auto Research、趋势推送；`REPORT_TYPE=simple/brief` 推送改为含信息源的精简卡片。
+- [改进] 主题自选拆分为 `us_ai_focus`（美股智能科技链）与 `hk_ai_focus`（港股专项），`ai_focus` 改为 US∪HK 合并且剔除 A 股；`--name`/`--watchlist` 支持逗号联合加载。
+- [新功能] 新增主题自选预设 `config/watchlists/ai_focus.txt`（Mag7 / AI设备 / 存储 / CPU / 光通信 / 航天 / 港股龙头），可用 `scripts/apply_watchlist.py` 写入 `STOCK_LIST`，预测链路支持 `--watchlist`。
+- [新功能] 新增日/周预测准确率链路：`scripts/prediction_accuracy_chain.py` 支持 Auto Research 预测、DecisionSignal `1d/5d` 后验重算与 analysis_history 纸面软核对；`outcomes/stats` 支持按 `stock_code` 过滤。
 - [改进] GitHub Actions 每日分析工作流补齐 TickFlow 数据源环境变量映射，并收敛 README 数据源稳定性说明到完整指南。
 - [修复] WebUI 启动时显式 `--host` / `--port` 不再被 `.env` 中的 `WEBUI_HOST` / `WEBUI_PORT` 覆盖，未传 CLI 参数时统一使用解析后的运行时配置。
 - [改进] GitHub Actions: 每日分析工作流（`00-daily-analysis.yml`）新增钉钉通知环境变量映射，支持在云端定时任务中直接使用钉钉机器人。
