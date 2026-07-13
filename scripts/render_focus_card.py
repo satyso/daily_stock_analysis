@@ -30,9 +30,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.config import setup_env
+try:
+    from src.config import setup_env
 
-setup_env()
+    setup_env()
+except Exception:
+    # Card rendering only needs yfinance + Pillow; env bootstrap is best-effort.
+    pass
 
 DEFAULT_CARD_WATCHLIST = "special_attention,us_ai_focus,hk_ai_focus"
 
@@ -63,11 +67,17 @@ NAME_MAP = {
     "hk01810": "小米",
     "hk09888": "百度",
     "hk00020": "商汤",
+    "hk02513": "智谱",
+    "688981": "中芯国际",
+    "603986": "兆易创新",
+    "688347": "华虹宏力",
+    "hk09926": "康方生物",
 }
 
 # Industry buckets (display order). A code may appear in one primary industry only.
 INDUSTRY_ORDER: List[Tuple[str, List[str]]] = [
-    ("存储材料", ["000660", "688268", "SNDK", "MU"]),
+    ("存储材料", ["000660", "688268", "SNDK", "MU", "603986"]),
+    ("晶圆制造", ["688981", "688347"]),
     ("算力芯片", ["NVDA", "AMD", "AVGO"]),
     ("光通信", ["LITE"]),
     ("Mag7", ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA"]),
@@ -77,7 +87,8 @@ INDUSTRY_ORDER: List[Tuple[str, List[str]]] = [
     ("宏观对冲", ["GLL"]),
     ("消费娱乐", ["DKNG"]),
     ("港股互联网", ["hk00700", "hk09988", "hk03690", "hk01810"]),
-    ("港股创新", ["hk09888", "hk00020"]),
+    ("港股创新", ["hk09888", "hk00020", "hk02513"]),
+    ("生物医药", ["hk09926"]),
 ]
 
 _HK_RE = re.compile(r"^hk0*(\d{1,5})$", re.IGNORECASE)
@@ -88,12 +99,15 @@ def _to_yf_symbol(code: str) -> str:
     upper = text.upper()
     if upper == "000660":
         return "000660.KS"
-    if upper == "688268":
-        return "688268.SS"
     m = _HK_RE.match(text)
     if m:
         num = m.group(1).zfill(4)
         return f"{num}.HK"
+    # A-share 6-digit: SH (6/9/5) -> .SS, SZ (0/3) -> .SZ
+    if len(upper) == 6 and upper.isdigit():
+        if upper.startswith(("6", "9", "5")):
+            return f"{upper}.SS"
+        return f"{upper}.SZ"
     return upper
 
 
