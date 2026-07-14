@@ -356,16 +356,34 @@ def _top_up_down(
     return ups, downs
 
 
+def _special_attention_first(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pin personal special_attention names to the top of the stock table."""
+    try:
+        from src.services.watchlist_presets import load_watchlist_codes
+
+        priority = {c: i for i, c in enumerate(load_watchlist_codes("special_attention"))}
+    except Exception:
+        priority = {}
+    return sorted(
+        rows,
+        key=lambda r: (0, priority.get(str(r.get("code") or ""), 10_000))
+        if str(r.get("code") or "") in priority
+        else (1, str(r.get("name") or "")),
+    )
+
+
 def format_card_markdown(
     rows: List[Dict[str, Any]],
     industries: List[Dict[str, Any]],
     *,
     title_date: str,
 ) -> str:
+    overall = _overall_accuracy(rows)
+    rows = _special_attention_first(rows)
     ups, downs = _top_up_down(rows, limit=5)
     lines = [
         "# 宋总特别关注",
-        title_date,
+        f"{title_date}  准确率 {overall['acc_label']}",
         "",
         "| Top5 涨 | % | 区间 | Top5 跌 | % | 区间 |",
         "|---|---:|---|---|---:|---|",
@@ -385,31 +403,33 @@ def format_card_markdown(
 
     lines += [
         "",
-        "| 行业 | 观点 | 关键股 | 区间 | 空间 | 买点 |",
-        "|---|---:|---|---|---:|---:|",
+        "| 行业 | 观点 | 关键股 | 区间 | 空间 | 买点 | 准确率 |",
+        "|---|---:|---|---|---:|---:|---:|",
     ]
     for ind in industries:
         pred = ind.get("pred_pct")
         pred_s = "暂无" if pred is None else f"{pred:+.2f}%"
         lines.append(
             f"| {ind['industry']} | {pred_s} | {ind['key_name']} | "
-            f"{ind.get('key_range', '-')} | {ind.get('key_upside', '-')} | {ind.get('key_buy', '-')} |"
+            f"{ind.get('key_range', '-')} | {ind.get('key_upside', '-')} | "
+            f"{ind.get('key_buy', '-')} | {ind.get('key_acc', ind.get('acc_label', '-'))} |"
         )
 
     lines += [
         "",
-        "| 股票 | 明日 | 区间 | 空间 | 买点 |",
-        "|---|---:|---|---:|---:|",
+        "| 股票 | 明日 | 区间 | 空间 | 买点 | 准确率 |",
+        "|---|---:|---|---:|---:|---:|",
     ]
     for row in rows:
         if row.get("error"):
-            lines.append(f"| {row['name']} | 暂无 | - | - | - |")
+            lines.append(f"| {row['name']} | 暂无 | - | - | - | - |")
             continue
         pred = float(row["pred_pct"])
         sign = "+" if pred > 0 else ""
         lines.append(
             f"| {row['name']} | {sign}{pred:.2f}% | {row.get('range_label', '-')} | "
-            f"{row.get('upside_label', '-')} | {row.get('buy_label', '-')} |"
+            f"{row.get('upside_label', '-')} | {row.get('buy_label', '-')} | "
+            f"{row.get('acc_label', '-')} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -446,11 +466,12 @@ def render_png_with_pillow(
         font_title = font_sub = font_section = font_row = font_small = font_pct = ImageFont.load_default()
 
     ups, downs = _top_up_down(rows, limit=5)
-    valid = [r for r in rows if "pred_pct" in r or r.get("error")]
+    overall = _overall_accuracy(rows)
+    valid = _special_attention_first([r for r in rows if "pred_pct" in r or r.get("error")])
     top_block = 48 + max(len(ups), len(downs), 1) * 36
-    width = 980
+    width = 1040
     height = (
-        100
+        110
         + top_block
         + 36
         + 26
@@ -473,15 +494,20 @@ def render_png_with_pillow(
     draw.rectangle((14, 14, 22, height - 14), fill=(56, 189, 248))
 
     draw.text((40, 30), "宋总特别关注", font=font_title, fill=(248, 250, 252))
-    draw.text((40, 78), title_date, font=font_sub, fill=(125, 145, 170))
+    draw.text(
+        (40, 78),
+        f"{title_date}  准确率 {overall['acc_label']}",
+        font=font_sub,
+        fill=(125, 145, 170),
+    )
 
     y = 108
-    left_box = (36, y, 488, y + top_block)
-    right_box = (508, y, 944, y + top_block)
+    left_box = (36, y, 508, y + top_block)
+    right_box = (528, y, 1004, y + top_block)
     draw.rounded_rectangle(left_box, radius=16, fill=(16, 42, 36), outline=(34, 120, 90), width=2)
     draw.rounded_rectangle(right_box, radius=16, fill=(48, 24, 34), outline=(140, 55, 75), width=2)
     draw.text((52, y + 12), "Top5 涨", font=font_section, fill=(52, 211, 153))
-    draw.text((524, y + 12), "Top5 跌", font=font_section, fill=(251, 113, 133))
+    draw.text((544, y + 12), "Top5 跌", font=font_section, fill=(251, 113, 133))
 
     for i in range(max(len(ups), len(downs), 1)):
         row_y = y + 46 + i * 36
@@ -492,12 +518,15 @@ def render_png_with_pillow(
             draw.text((340, row_y), str(ups[i].get("range_label") or "-"), font=font_small, fill=(148, 180, 160))
         if i < len(downs):
             pred = float(downs[i]["pred_pct"])
-            draw.text((524, row_y), f"{i + 1}. {downs[i]['name']}", font=font_row, fill=(255, 241, 242))
-            draw.text((730, row_y), f"{pred:.2f}%", font=font_pct, fill=_pct_color(pred))
-            draw.text((820, row_y), str(downs[i].get("range_label") or "-"), font=font_small, fill=(190, 150, 155))
+            draw.text((544, row_y), f"{i + 1}. {downs[i]['name']}", font=font_row, fill=(255, 241, 242))
+            draw.text((760, row_y), f"{pred:.2f}%", font=font_pct, fill=_pct_color(pred))
+            draw.text((860, row_y), str(downs[i].get("range_label") or "-"), font=font_small, fill=(190, 150, 155))
 
     y = y + top_block + 24
-    headers = [("行业", 40), ("观点", 170), ("关键股", 270), ("区间", 430), ("空间", 600), ("买点", 720)]
+    headers = [
+        ("行业", 40), ("观点", 150), ("关键股", 250), ("区间", 400),
+        ("空间", 560), ("买点", 680), ("准确率", 820),
+    ]
     for text, x in headers:
         draw.text((x, y), text, font=font_small, fill=(125, 145, 170))
     y += 20
@@ -509,17 +538,25 @@ def render_png_with_pillow(
         pred = ind.get("pred_pct")
         draw.text((40, y), ind["industry"][:8], font=font_row, fill=(248, 250, 252))
         if pred is None:
-            draw.text((170, y), "暂无", font=font_row, fill=(125, 145, 170))
+            draw.text((150, y), "暂无", font=font_row, fill=(125, 145, 170))
         else:
-            draw.text((170, y), f"{float(pred):+.2f}%", font=font_row, fill=_pct_color(float(pred)))
-        draw.text((270, y), str(ind.get("key_name") or "-")[:10], font=font_row, fill=(210, 220, 235))
-        draw.text((430, y), str(ind.get("key_range") or "-"), font=font_small, fill=(148, 163, 184))
-        draw.text((600, y), str(ind.get("key_upside") or "-"), font=font_row, fill=(52, 211, 153))
-        draw.text((720, y), str(ind.get("key_buy") or "-"), font=font_row, fill=(125, 211, 252))
+            draw.text((150, y), f"{float(pred):+.2f}%", font=font_row, fill=_pct_color(float(pred)))
+        draw.text((250, y), str(ind.get("key_name") or "-")[:10], font=font_row, fill=(210, 220, 235))
+        draw.text((400, y), str(ind.get("key_range") or "-"), font=font_small, fill=(148, 163, 184))
+        draw.text((560, y), str(ind.get("key_upside") or "-"), font=font_row, fill=(52, 211, 153))
+        draw.text((680, y), str(ind.get("key_buy") or "-"), font=font_row, fill=(125, 211, 252))
+        draw.text(
+            (820, y),
+            str(ind.get("key_acc") or ind.get("acc_label") or "-"),
+            font=font_small,
+            fill=(203, 213, 225),
+        )
         y += 28
 
     y += 14
-    headers2 = [("股票", 40), ("明日", 200), ("区间", 320), ("空间", 520), ("买点", 680)]
+    headers2 = [
+        ("股票", 40), ("明日", 180), ("区间", 300), ("空间", 480), ("买点", 620), ("准确率", 780),
+    ]
     for text, x in headers2:
         draw.text((x, y), text, font=font_small, fill=(125, 145, 170))
     y += 20
@@ -530,14 +567,15 @@ def render_png_with_pillow(
         draw.rounded_rectangle((36, y - 2, width - 36, y + 22), radius=8, fill=(22, 34, 56))
         draw.text((40, y), row["name"][:10], font=font_row, fill=(248, 250, 252))
         if row.get("error"):
-            draw.text((200, y), "暂无", font=font_row, fill=(125, 145, 170))
+            draw.text((180, y), "暂无", font=font_row, fill=(125, 145, 170))
         else:
             pred = float(row["pred_pct"])
             sign = "+" if pred > 0 else ""
-            draw.text((200, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
-            draw.text((320, y), str(row.get("range_label") or "-"), font=font_small, fill=(148, 163, 184))
-            draw.text((520, y), str(row.get("upside_label") or "-"), font=font_row, fill=(52, 211, 153))
-            draw.text((680, y), str(row.get("buy_label") or "-"), font=font_row, fill=(125, 211, 252))
+            draw.text((180, y), f"{sign}{pred:.2f}%", font=font_row, fill=_pct_color(pred))
+            draw.text((300, y), str(row.get("range_label") or "-"), font=font_small, fill=(148, 163, 184))
+            draw.text((480, y), str(row.get("upside_label") or "-"), font=font_row, fill=(52, 211, 153))
+            draw.text((620, y), str(row.get("buy_label") or "-"), font=font_row, fill=(125, 211, 252))
+            draw.text((780, y), str(row.get("acc_label") or "-"), font=font_small, fill=(203, 213, 225))
         y += 26
 
     img.save(out_png, format="PNG")
