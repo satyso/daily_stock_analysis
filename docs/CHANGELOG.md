@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] 同步 decision-signal outcomes/stats 的 OpenAPI 静态契约，并修复单股推送线程安全测试对 brief 卡片路径的 mock。
 - [改进] 宋总特别关注卡恢复「准确率」列与总览准确率；特别关注名单置顶展示（含康方生物等新增标的）。
 - [改进] 特别关注名单新增智谱(hk02513)、中芯国际(688981)、兆易创新(603986)、华虹宏力(688347)、康方生物(hk09926)；卡片补充区间/上涨空间/买点，并支持 `scripts/send_focus_card_feishu.py` 推送飞书。
 - [改进] 宋总特别关注卡补充区间、上涨空间与最佳买点；Top5 涨/跌并排色块置顶。
