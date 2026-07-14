@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] 同步 decision-signal outcomes/stats 的 OpenAPI 静态契约，并修复单股推送线程安全测试对 brief 卡片路径的 mock。
+- [改进] 宋总特别关注卡恢复「准确率」列与总览准确率；特别关注名单置顶展示（含康方生物等新增标的）。
+- [改进] 特别关注名单新增智谱(hk02513)、中芯国际(688981)、兆易创新(603986)、华虹宏力(688347)、康方生物(hk09926)；卡片补充区间/上涨空间/买点，并支持 `scripts/send_focus_card_feishu.py` 推送飞书。
+- [改进] 宋总特别关注卡补充区间、上涨空间与最佳买点；Top5 涨/跌并排色块置顶。
+- [改进] 宋总特别关注卡版式重做：Top5 涨/跌并排色块置顶，行业行与全部标的改为双栏芯片布局。
+- [改进] 焦点卡左上角标题改为「宋总特别关注」；去掉中间说明文案、可信度/准确率字样与底部脚注符号。
+- [改进] 焦点卡标题改为「特别关注 · 宋总预测」；Top5 拆成涨/跌两组；卡片展示去掉「准确率/准确度」字样，仅保留可信度。
+- [改进] 焦点卡扩为特别关注∪美股主题∪港股专项全量覆盖，增加行业观点/行业关键股，以及逐票准确率与可信度（高/中/低）。
+- [改进] 焦点卡增加近端方向准确率（总览 + 逐票）；推送简报在结果含准确率字段时同步展示。
+- [改进] 推送/焦点卡改为股票名称 + 明日涨跌幅百分比（不再展示代码与信息源行）；新增 `scripts/setup_intelligence_defaults.py` 一键启用金十等资讯源，以及 `scripts/render_focus_card.py` 生成卡片图片。
 - [改进] 精简推送卡改为 SMART 字段（建议/趋势/评分/周期/观点/信息源），观点原文不再截断覆盖。
 - [改进] 日更默认改为截图「特别关注」预设 `special_attention`（11 只），并保留 Mag7/港股主题名单；`daily` 闭环与可选 Actions 默认跟此名单。
 - [改进] 美股/港股 focus 名单收敛为 Mag7 + CPU/存储/光/航天龙头与港股互联网+创新；`daily` 闭环支持准确率复算、Auto Research、趋势推送；`REPORT_TYPE=simple/brief` 推送改为含信息源的精简卡片。

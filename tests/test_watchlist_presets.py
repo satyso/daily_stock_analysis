@@ -103,6 +103,11 @@ def test_special_attention_preset_matches_screenshot():
         "GLL",
         "DKNG",
         "CONL",
+        "hk02513",
+        "688981",
+        "603986",
+        "688347",
+        "hk09926",
     ]
     assert codes == expected
     assert describe_watchlists()["special_attention"]["market"] == "special"

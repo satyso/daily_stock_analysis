@@ -41,6 +41,11 @@ class _CriticalSectionTrackingNotifier:
         self.generate_single_stock_report = MagicMock(
             side_effect=self._generate_single_stock_report
         )
+        # SIMPLE/BRIEF single-stock notify now uses focus brief cards.
+        self.generate_brief_report = MagicMock(side_effect=self._generate_brief_report)
+        self.generate_dashboard_report = MagicMock(
+            side_effect=self._generate_dashboard_report
+        )
         self.send = MagicMock(side_effect=self._send)
 
     def _enter(self, stage: str, code: str) -> None:
@@ -57,6 +62,16 @@ class _CriticalSectionTrackingNotifier:
     def _generate_single_stock_report(self, result: AnalysisResult) -> str:
         self._enter("generate", result.code)
         return f"single:{result.code}"
+
+    def _generate_brief_report(self, results) -> str:
+        code = results[0].code if results else "unknown"
+        self._enter("generate", code)
+        return f"brief:{code}"
+
+    def _generate_dashboard_report(self, results) -> str:
+        code = results[0].code if results else "unknown"
+        self._enter("generate", code)
+        return f"dashboard:{code}"
 
     def _send(
         self,
@@ -110,7 +125,7 @@ class TestPipelineSingleNotifyThreadSafety(unittest.TestCase):
 
         self.assertEqual(len(results), 2)
         self.assertTrue(all(result is not None for result in results))
-        self.assertEqual(pipeline.notifier.generate_single_stock_report.call_count, 2)
+        self.assertEqual(pipeline.notifier.generate_brief_report.call_count, 2)
         self.assertEqual(pipeline.notifier.send.call_count, 2)
         self.assertEqual(pipeline.notifier.max_inflight, 1)
         self.assertCountEqual(

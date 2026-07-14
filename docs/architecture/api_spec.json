@@ -2026,6 +2026,24 @@
               ],
               "title": "Statuses"
             }
+          },
+          {
+            "name": "stock_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按股票代码过滤统计；支持单码",
+              "title": "Stock Code"
+            },
+            "description": "按股票代码过滤统计；支持单码"
           }
         ],
         "responses": {
@@ -5912,6 +5930,20 @@
             },
             "type": "array",
             "title": "Statuses"
+          },
+          "stock_codes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Codes"
           },
           "total": {
             "type": "integer",

@@ -1747,11 +1747,10 @@ class NotificationService(
         buy_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'buy')
         sell_count = sum(1 for r in results if getattr(r, 'decision_type', '') == 'sell')
         hold_count = sum(1 for r in results if getattr(r, 'decision_type', '') in ('hold', ''))
-        # SMART focus card: Specific / Measurable / Actionable / Relevant / Time-bound.
-        # Do not truncate/overwrite the one-sentence view; keep a full readable line.
-        src_label = "源" if not str(report_language).lower().startswith("en") else "Src"
-        horizon_label = "周期" if not str(report_language).lower().startswith("en") else "Horizon"
-        view_label = "观点" if not str(report_language).lower().startswith("en") else "View"
+        # Focus card: stock names only, tomorrow expected % move, no codes/sources.
+        is_en = str(report_language).lower().startswith("en")
+        horizon_label = "Tomorrow" if is_en else "明日"
+        view_label = "View" if is_en else "观点"
         lines = [
             f"# {report_date} {labels['brief_title']}",
             f"{len(results)}{labels['stock_unit_compact']} · 🟢{buy_count} 🟡{hold_count} 🔴{sell_count}",
@@ -1764,29 +1763,103 @@ class NotificationService(
             dash = r.dashboard or {}
             core = dash.get('core_conclusion', {}) or {}
             one = (core.get('one_sentence') or r.analysis_summary or '').strip().replace("\n", " ")
-            trend = localize_trend_prediction(getattr(r, "trend_prediction", None), report_language) or "—"
             advice = localize_operation_advice(r.operation_advice, report_language) or "—"
-            horizon = "1w" if str(report_language).lower().startswith("en") else "1周"
-            lines.append(f"{emoji} **{name}** `{r.code}`")
-            lines.append(
-                f"  {labels['advice_label']}: {advice} · "
-                f"{labels['trend_label']}: {trend} · "
-                f"{labels['score_label']}: {r.sentiment_score} · "
-                f"{horizon_label}: {horizon}"
-            )
+            pred_pct = self._format_tomorrow_pct(r, report_language)
+            lines.append(f"{emoji} **{name}**")
+            lines.append(f"  {horizon_label}: {pred_pct} · {labels['advice_label']}: {advice}")
             if one:
                 lines.append(f"  {view_label}: {one}")
-            sources = self._format_focus_sources(r)
-            if sources:
-                lines.append(f"  {src_label}: {sources}")
             lines.append("")
-        models = self._collect_models_used(results)
         footer = datetime.now().strftime('%Y-%m-%d %H:%M')
-        if models:
-            lines.append(f"*{footer} · {labels['analysis_model_label']}: {', '.join(models)}*")
-        else:
-            lines.append(f"*{footer}*")
+        lines.append(f"*{footer}*")
         return "\n".join(lines)
+
+    def _format_tomorrow_pct(self, result: AnalysisResult, report_language: str) -> str:
+        """Format tomorrow expected % move; prefer explicit fields over direction words."""
+        for key in ("predicted_change_pct", "tomorrow_pct", "expected_return_pct"):
+            raw = getattr(result, key, None)
+            if raw is None and isinstance(getattr(result, "dashboard", None), dict):
+                raw = (result.dashboard or {}).get(key)
+            try:
+                if raw is not None and str(raw).strip() != "":
+                    value = float(raw)
+                    sign = "+" if value > 0 else ""
+                    return f"{sign}{value:.2f}%"
+            except (TypeError, ValueError):
+                continue
+        # Fallback: map coarse trend text to a conservative numeric band label
+        trend = str(getattr(result, "trend_prediction", "") or "")
+        mapping = [
+            (("强烈看多", "strong bull"), "+2.50%"),
+            (("看多", "偏多", "bull"), "+1.20%"),
+            (("强烈看空", "strong bear"), "-2.50%"),
+            (("看空", "偏空", "bear"), "-1.20%"),
+            (("震荡", "中性", "neutral", "flat"), "0.00%"),
+        ]
+        lower = trend.lower()
+        for keys, label in mapping:
+            if any(k.lower() in lower or k in trend for k in keys):
+                return label
+        return "0.00%"
+
+    def _extract_accuracy_pct(self, result: AnalysisResult) -> Optional[float]:
+        """Read direction accuracy percent from result fields / dashboard if present."""
+        dash = getattr(result, "dashboard", None) or {}
+        candidates = [
+            getattr(result, "direction_accuracy_pct", None),
+            getattr(result, "prediction_accuracy_pct", None),
+            getattr(result, "accuracy_pct", None),
+            dash.get("direction_accuracy_pct") if isinstance(dash, dict) else None,
+            dash.get("prediction_accuracy_pct") if isinstance(dash, dict) else None,
+            dash.get("accuracy_pct") if isinstance(dash, dict) else None,
+        ]
+        for raw in candidates:
+            try:
+                if raw is None or str(raw).strip() == "":
+                    continue
+                value = float(raw)
+                # accept 0-1 ratio or 0-100 percent
+                if 0.0 <= value <= 1.0:
+                    value *= 100.0
+                return value
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _format_stock_accuracy(self, result: AnalysisResult, report_language: str) -> str:
+        value = self._extract_accuracy_pct(result)
+        if value is None:
+            return ""
+        return f"{value:.0f}%"
+
+    def _confidence_from_accuracy_pct(self, value: Optional[float], report_language: str) -> str:
+        if value is None:
+            return ""
+        is_en = str(report_language).lower().startswith("en")
+        if value >= 60:
+            return "High" if is_en else "高"
+        if value >= 45:
+            return "Mid" if is_en else "中"
+        return "Low" if is_en else "低"
+
+    def _format_stock_confidence(self, result: AnalysisResult, report_language: str) -> str:
+        return self._confidence_from_accuracy_pct(
+            self._extract_accuracy_pct(result),
+            report_language,
+        )
+
+    def _format_overall_accuracy(self, results: List[AnalysisResult], report_language: str) -> str:
+        values = [v for v in (self._extract_accuracy_pct(r) for r in results) if v is not None]
+        if not values:
+            return ""
+        return f"{(sum(values) / len(values)):.0f}%"
+
+    def _format_overall_confidence(self, results: List[AnalysisResult], report_language: str) -> str:
+        values = [v for v in (self._extract_accuracy_pct(r) for r in results) if v is not None]
+        if not values:
+            return ""
+        avg = sum(values) / len(values)
+        return self._confidence_from_accuracy_pct(avg, report_language)
 
     def _format_focus_sources(self, result: AnalysisResult) -> str:
         """Compact information-source line for focus/brief cards."""
