@@ -193,7 +193,7 @@ python scripts/prediction_accuracy_chain.py paper --watchlist special_attention 
 
 推送卡片：`REPORT_TYPE=simple` / `brief` 使用精简 focus 格式（趋势 + 评分 + 一句话 + 信息源），避免长文。
 
-GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按工作日定时跑 `daily`（默认 `special_attention`），也可手动 `workflow_dispatch`。
+GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按每天北京时间 09:30（UTC 01:30）定时跑 `daily`（默认 `special_attention`），也可手动 `workflow_dispatch`。
 
 约定：`daily`/`1d` = 次日验证；`weekly`/`5d` = 约一周（5 个交易日）。新信号默认 horizon 仍多为 `3d`；`recalc --horizons 1d,5d` 会按请求 horizon 评估，不要求信号自身 horizon 等于 1d/5d。
 
