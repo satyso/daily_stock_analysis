@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [改进] 特别关注日更推送改到每天北京时间 09:30（UTC 01:30），便于早盘前接收飞书卡片。
 - [修复] 飞书 Webhook 返回 `code=0` 时不再被 `send_focus_card_feishu.py` 误判为发送失败。
 - [改进] 飞书特别关注推送默认优先发 PNG：有 `FEISHU_APP_ID/SECRET` 时群内直接出图，否则发可点击的图片链接卡片。
+- [改进] Focus prediction daily Actions 增加渲染并推送关注卡 PNG 步骤，透传 `FEISHU_APP_ID/SECRET/CHAT_ID`。
 - [修复] 同步 decision-signal outcomes/stats 的 OpenAPI 静态契约，并修复单股推送线程安全测试对 brief 卡片路径的 mock。
 - [改进] 宋总特别关注卡恢复「准确率」列与总览准确率；特别关注名单置顶展示（含康方生物等新增标的）。
 - [改进] 特别关注名单新增智谱(hk02513)、中芯国际(688981)、兆易创新(603986)、华虹宏力(688347)、康方生物(hk09926)；卡片补充区间/上涨空间/买点，并支持 `scripts/send_focus_card_feishu.py` 推送飞书。
