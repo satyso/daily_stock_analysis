@@ -68,7 +68,17 @@ def _send_webhook(content: str, *, title: str) -> bool:
         data = resp.json()
     except Exception:
         pass
-    ok = resp.status_code == 200 and int(data.get("code", data.get("StatusCode", 1)) or 1) == 0
+    def _webhook_ok(status_code: int, body: dict) -> bool:
+        # Feishu/Lark may return code=0 / StatusCode=0; treat missing as failure.
+        if status_code != 200:
+            return False
+        if "code" in body:
+            return int(body.get("code") or 0) == 0
+        if "StatusCode" in body:
+            return int(body.get("StatusCode") or 0) == 0
+        return False
+
+    ok = _webhook_ok(resp.status_code, data)
     if not ok:
         # Fallback to plain text
         payload = {"msg_type": "text", "content": {"text": f"{title}\n\n{body_text[:7000]}"}}
@@ -81,7 +91,7 @@ def _send_webhook(content: str, *, title: str) -> bool:
             data2 = resp2.json()
         except Exception:
             data2 = {}
-        ok = resp2.status_code == 200 and int(data2.get("code", data2.get("StatusCode", 1)) or 1) == 0
+        ok = _webhook_ok(resp2.status_code, data2)
         print(f"webhook_text_status={resp2.status_code} body={data2}")
         return ok
     print(f"webhook_card_status={resp.status_code} body={data}")
