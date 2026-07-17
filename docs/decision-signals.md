@@ -195,6 +195,8 @@ python scripts/prediction_accuracy_chain.py paper --watchlist special_attention 
 
 GitHub Actions：可选工作流 `.github/workflows/prediction-focus-daily.yml`；设置 `PREDICTION_FOCUS_DAILY_ENABLED=true` 后按每天北京时间 09:30（UTC 01:30）定时跑 `daily`（默认 `special_attention`），也可手动 `workflow_dispatch`。
 
+飞书图片推送：`scripts/send_focus_card_feishu.py` 默认优先发送关注卡 PNG。配置 `FEISHU_APP_ID` + `FEISHU_APP_SECRET`（开通 `im:resource`）时可上传 `image_key` 并在群内直接显示图片；仅有 Webhook 时回退为短时图片链接按钮卡片。
+
 约定：`daily`/`1d` = 次日验证；`weekly`/`5d` = 约一周（5 个交易日）。新信号默认 horizon 仍多为 `3d`；`recalc --horizons 1d,5d` 会按请求 horizon 评估，不要求信号自身 horizon 等于 1d/5d。
 
 ## 脱敏与低敏边界
