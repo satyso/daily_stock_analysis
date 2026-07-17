@@ -79,6 +79,10 @@ jobs:
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          FEISHU_WEBHOOK_KEYWORD: ${{ secrets.FEISHU_WEBHOOK_KEYWORD }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           REPORT_TYPE: simple
@@ -96,3 +100,22 @@ jobs:
             ARGS+=(--no-notify)
           fi
           python scripts/prediction_accuracy_chain.py "${ARGS[@]}"
+
+      - name: Render and push focus card image
+        if: ${{ (github.event.inputs.notify || 'true') == 'true' }}
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          FEISHU_WEBHOOK_KEYWORD: ${{ secrets.FEISHU_WEBHOOK_KEYWORD }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+          WATCHLIST: ${{ github.event.inputs.watchlist || 'special_attention' }}
+        run: |
+          set -euo pipefail
+          OUT_DIR=/tmp/focus-cards
+          mkdir -p "$OUT_DIR"
+          python scripts/render_focus_card.py --watchlist "$WATCHLIST" --out-dir "$OUT_DIR"
+          PNG="$(ls -1t "$OUT_DIR"/focus_card_full_*.png | head -n 1)"
+          test -n "$PNG"
+          python scripts/send_focus_card_feishu.py --mode image --image "$PNG" --title "宋总特别关注"
