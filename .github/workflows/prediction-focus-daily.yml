@@ -5,7 +5,7 @@ name: Focus prediction daily
 
 on:
   schedule:
-    - cron: '30 11 * * 1-5'  # UTC 11:30 ≈ 北京 19:30（美股盘前/港股收盘后）
+    - cron: '30 1 * * *'  # UTC 01:30 ≈ 北京 09:30（每天早盘前推送）
   workflow_dispatch:
     inputs:
       watchlist:
