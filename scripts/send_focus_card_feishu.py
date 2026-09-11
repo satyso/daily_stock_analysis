@@ -5,7 +5,7 @@
 Prefer PNG image. Modes:
   1) FEISHU_APP_ID + FEISHU_APP_SECRET: upload image_key, send native image via webhook
   2) webhook-only: upload PNG to a short-lived public host and send a button card link
-  3) fallback: markdown / text card
+  3) fallback: markdown / text card when image upload/hosts fail or --mode md
 
 Requires one of:
   - FEISHU_WEBHOOK_URL (+ optional FEISHU_WEBHOOK_SECRET / FEISHU_WEBHOOK_KEYWORD)
@@ -336,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         "--mode",
         choices=("auto", "image", "md"),
         default="auto",
-        help="auto: prefer image; image: PNG only; md: markdown/text only",
+        help="auto/image: prefer PNG then markdown; md: markdown/text only",
     )
     parser.add_argument("--title", default="宋总特别关注")
     args = parser.parse_args(argv)
@@ -367,10 +367,15 @@ def main(argv: list[str] | None = None) -> int:
             ok = _send_webhook_image_link(image_path, title=args.title)
         print(f"image={image_path}")
 
-    if not ok and args.mode != "image":
+    if not ok:
         if md_path is None:
+            if args.mode == "image":
+                print("ERROR: image send failed", file=sys.stderr)
+                return 1
             print("ERROR: no focus card markdown found", file=sys.stderr)
             return 2
+        if prefer_image:
+            print("image send failed; falling back to markdown card")
         content = md_path.read_text(encoding="utf-8").strip()
         if not content:
             print("ERROR: empty markdown", file=sys.stderr)
@@ -380,10 +385,6 @@ def main(argv: list[str] | None = None) -> int:
         if not ok and has_app:
             ok = _send_via_app(content, title=args.title)
         print(f"markdown={md_path}")
-
-    if not ok and args.mode == "image":
-        print("ERROR: image send failed", file=sys.stderr)
-        return 1
 
     print(f"feishu_ok={ok}")
     return 0 if ok else 1
