@@ -199,6 +199,41 @@ def test_hints_disabled_preserves_request_shape_and_input_object():
     assert result.disabled_reason == "hints_disabled"
 
 
+def test_inbound_prompt_cache_key_is_stripped_when_hints_disabled():
+    original = {
+        "model": "openai/gpt-4o",
+        "messages": [{"role": "user", "content": "hello"}],
+        "prompt_cache_key": "caller-supplied",
+    }
+
+    result = apply_prompt_cache_hints(
+        original,
+        ProviderCacheRouteContext(model="openai/gpt-4o", provider="openai", api_surface="chat_completions"),
+        _config(llm_prompt_cache_hints_enabled=False),
+    )
+
+    assert "prompt_cache_key" not in result.call_kwargs
+    assert original["prompt_cache_key"] == "caller-supplied"
+
+
+def test_inbound_prompt_cache_key_is_stripped_when_capability_not_verified():
+    original = {
+        "model": "openai/gpt-4o",
+        "messages": [{"role": "user", "content": "hello"}],
+        "prompt_cache_key": "caller-supplied",
+    }
+
+    result = apply_prompt_cache_hints(
+        original,
+        ProviderCacheRouteContext(model="openai/gpt-4o", provider="openai", api_surface="chat_completions"),
+        _config(llm_prompt_cache_hints_enabled=True),
+    )
+
+    assert "prompt_cache_key" not in result.call_kwargs
+    assert result.disabled_reason == "capability_not_verified"
+    assert original["prompt_cache_key"] == "caller-supplied"
+
+
 def test_openai_doc_only_caps_do_not_emit_prompt_cache_key_until_verified():
     original = {"model": "openai/gpt-4o", "messages": [{"role": "user", "content": "hello"}]}
 
@@ -291,7 +326,7 @@ def test_repeated_lowering_from_shared_input_does_not_cross_pollute_results():
     assert original["messages"][0]["content"] == "stable rules"
 
 
-def test_litellm_openai_prompt_cache_key_is_not_passed_through_without_verified_capture():
+def test_litellm_openai_forwards_prompt_cache_key_so_project_must_gate_it():
     sanitized_env = os.environ.copy()
     for key in (
         "OPENAI_API_KEY",
@@ -408,7 +443,8 @@ def test_litellm_openai_prompt_cache_key_is_not_passed_through_without_verified_
     assert captured_line, completed.stdout + completed.stderr
     body = json.loads(captured_line.removeprefix("CAPTURED_BODY="))
     assert body["messages"] == [{"role": "user", "content": "hello"}]
-    assert "prompt_cache_key" not in body
+    # Current LiteLLM forwards this field. Project gating is apply_prompt_cache_hints.
+    assert body.get("prompt_cache_key") == "cache-key"
 
 
 def test_domain_hmac_separates_prompt_cache_route_and_deepseek_domains(monkeypatch):
