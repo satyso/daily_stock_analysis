@@ -19,6 +19,12 @@ from data_provider.yfinance_fundamental_adapter import (
 )
 
 
+def _ttm_dividend_index(tz: str = "America/New_York", days=(60, 150, 240, 330)):
+    """Four ex-dividend dates that stay inside the rolling 365-day TTM window."""
+    now = pd.Timestamp.now(tz=tz)
+    return pd.DatetimeIndex([now - pd.Timedelta(days=offset) for offset in days])
+
+
 def _build_mock_ticker(
     info: dict,
     income_stmt: pd.DataFrame | None = None,
@@ -93,12 +99,10 @@ class TestYfinanceFundamentalAdapter(unittest.TestCase):
                 pd.Timestamp("2025-12-31"): {"Operating Cash Flow": 3.5e10},
             }
         )
+        div_index = _ttm_dividend_index()
         dividends = pd.Series(
             [0.26, 0.26, 0.26, 0.27],
-            index=pd.DatetimeIndex(
-                ["2025-08-11", "2025-11-10", "2026-02-09", "2026-05-11"],
-                tz="America/New_York",
-            ),
+            index=div_index,
             name="Dividends",
         )
         ticker = _build_mock_ticker(info, income_df_with_yoy, cashflow_df, dividends)
@@ -126,7 +130,10 @@ class TestYfinanceFundamentalAdapter(unittest.TestCase):
         # info.dividendYield (0.36) is intentionally ignored when TTM cash exists.
         self.assertAlmostEqual(div["ttm_dividend_yield_pct"], 0.5, places=2)
         self.assertEqual(div["currency"], "USD")
-        self.assertEqual(div["events"][0]["ex_dividend_date"], "2026-05-11")
+        self.assertEqual(
+            div["events"][0]["ex_dividend_date"],
+            div_index.max().date().isoformat(),
+        )
 
         self.assertEqual(
             bundle["belong_boards"],
@@ -141,10 +148,7 @@ class TestYfinanceFundamentalAdapter(unittest.TestCase):
         # Series. Without coercion, `.items()` yields (column_name, Series), every event
         # is dropped, and TTM silently falls back to the annual-rate estimate — the real
         # bug seen on live US/HK/JP/KR/TW reports (24.0 / "0 次" instead of the true sum).
-        idx = pd.DatetimeIndex(
-            ["2025-08-11", "2025-11-10", "2026-02-09", "2026-05-11"],
-            tz="America/New_York",
-        )
+        idx = _ttm_dividend_index()
         dividends_df = pd.DataFrame({"Dividends": [0.26, 0.26, 0.26, 0.27]}, index=idx)
         info = {
             "currency": "USD",
@@ -211,7 +215,7 @@ class TestYfinanceFundamentalAdapter(unittest.TestCase):
         }
         dividends = pd.Series(
             [2.0],
-            index=pd.DatetimeIndex(["2026-01-15"], tz="Asia/Hong_Kong"),
+            index=_ttm_dividend_index("Asia/Hong_Kong", days=(120,)),
             name="Dividends",
         )
         ticker = _build_mock_ticker(info, dividends=dividends)

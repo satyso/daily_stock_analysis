@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] 未验证或未开启 hint 时丢掉调用方传入的 `prompt_cache_key`，避免当前 LiteLLM 把它转发到 OpenAI 兼容接口。
+- [测试] YFinance 股息 TTM 单测改为相对日期，避免固定除息日滑出 365 天窗口后假失败。
 - [修复] 焦点预测日更在公共图床不可用时回退飞书 Markdown 卡片，避免关注卡发送失败导致任务标红、群里收不到预测。
 - [改进] Focus prediction daily 补齐 AIHubMix / LLM_CHANNELS 等生成配置映射，并上传关注卡 artifact。
 - [改进] 特别关注日更推送改到每天北京时间 09:30（UTC 01:30），便于早盘前接收飞书卡片。

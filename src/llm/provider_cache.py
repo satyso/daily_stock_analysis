@@ -512,6 +512,9 @@ def apply_prompt_cache_hints(
 ) -> PromptCacheHintResult:
     """Return request kwargs with safe provider-specific cache hints applied."""
     new_kwargs = copy.deepcopy(dict(call_kwargs))
+    # Current LiteLLM forwards prompt_cache_key to OpenAI-compatible APIs.
+    # Drop caller-supplied keys; only a verified HMAC hint may be re-added.
+    new_kwargs.pop("prompt_cache_key", None)
     caps = resolve_provider_cache_caps(route_context)
     diagnostics_level = normalize_prompt_cache_diagnostics_level(
         getattr(config, "llm_prompt_cache_diagnostics_level", "off")
